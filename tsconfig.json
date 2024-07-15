@@ -1,0 +1,44 @@
+{
+    "ts-node": {
+        "esm": true,
+        "experimentalSpecifierResolution": "node"
+    },
+    "compilerOptions": {
+        "lib": [
+            "esnext",
+            "dom"
+        ],
+        "target": "ES2020",
+        "module": "commonjs",
+        "moduleResolution": "node",
+        "listEmittedFiles": false,
+        "declaration": true,
+        "declarationMap": true,
+        "sourceMap": true,
+        "forceConsistentCasingInFileNames": true,
+        "strict": true,
+        "noImplicitAny": false,
+        "skipLibCheck": true,
+        "esModuleInterop": true,
+        "pretty": true,
+        "resolveJsonModule": true,
+        "noEmitOnError": true,
+        "removeComments": false,
+        "allowJs": true,
+        "checkJs": false,
+        "allowSyntheticDefaultImports": true,
+        "noFallthroughCasesInSwitch": true,
+        "outDir": "./dist/esm",
+        "rootDir": "./src",
+        "baseUrl": ".",
+        "declarationDir": "./dist/types"
+    },
+    "compileOnSave": false,
+    "include": [
+        "src/**/*"
+    ],
+    "exclude": [
+        "node_modules",
+        "dist"
+    ]
+}

@@ -1,0 +1,54 @@
+{
+    "name": "flex-route",
+    "version": "0.0.1",
+    "description": "",
+    "private": false,
+    "main": "./src/index.ts",
+    "scripts": {
+        "start": "node --loader ts-node/esm ./test/index.ts",
+        "build": "npx node-build-engine",
+        "npm:publish": "npm run build && cpy README.md dist && cpy resources dist && cd dist && npm publish --access public"
+    },
+    "author": "ISMAEL1361 <ismael1361@gmail.com> (https://github.com/ismael1361)",
+    "license": "MIT",
+    "repository": "github:ismael1361/flex-route",
+    "bugs": {
+        "url": "https://github.com/ismael1361/flex-route/issues"
+    },
+    "homepage": "https://github.com/ismael1361/flex-route#readme",
+    "keywords": [],
+    "devDependencies": {
+        "@types/is-glob": "^4.0.4",
+        "@types/node": "^20.14.10",
+        "cpy-cli": "^5.0.0",
+        "esm": "^3.2.25",
+        "ts-node": "^10.9.2",
+        "tsconfig-paths": "^4.2.0",
+        "tsx": "^4.16.2",
+        "typescript": "^5.5.3"
+    },
+    "browserify": {
+        "entries": "./index.ts",
+        "standalone": "MyLibrary",
+        "ignore": [
+            "some-module"
+        ],
+        "insertGlobals": false,
+        "detectGlobals": true,
+        "ignoreMissing": false,
+        "debug": true,
+        "extensions": [
+            ".ts",
+            ".js"
+        ],
+        "noParse": [
+            "large-library"
+        ],
+        "externalRequireName": "require"
+    },
+    "dependencies": {
+        "chokidar": "^3.6.0",
+        "is-glob": "^4.0.3",
+        "node-build-engine": "^1.3.3"
+    }
+}
