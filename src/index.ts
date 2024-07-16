@@ -75,9 +75,6 @@ const compileTypeScript = async (filePath: string): Promise<string> => {
 			reportDiagnostics: true,
 			fileName: filePath,
 		});
-
-		console.log(result);
-
 		// Retorna o código JavaScript transpilado
 		return result.outputText;
 	} catch {}
@@ -139,12 +136,12 @@ class FlexRoute extends SimpleEventEmitter {
 				this.addRoute(file);
 			})
 			.on("change", (file) => {
-				this.changeRoute(file);
 				console.log(`O arquivo ${file} foi modificado!`);
+				this.changeRoute(file);
 			})
 			.on("unlink", (file) => {
-				this.removeRoute(file);
 				console.log(`O arquivo ${file} foi removido!`);
+				this.removeRoute(file);
 			});
 
 		this.emit("ready");
