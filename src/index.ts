@@ -11,25 +11,66 @@ import ts from "typescript";
 import * as vm from "vm";
 import * as colorette from "colorette";
 
+const getTSCompilerOptions = (filePath: string): ts.CompilerOptions => {
+	let options: ts.CompilerOptions = {};
+
+	let tsconfigFile = filePath;
+
+	while (fs.existsSync(path.resolve(tsconfigFile, "tsconfig.json")) !== true && path.dirname(tsconfigFile) !== path.dirname(process.cwd())) {
+		tsconfigFile = path.dirname(tsconfigFile);
+	}
+
+	if (fs.existsSync(path.resolve(tsconfigFile, "tsconfig.json"))) {
+		const tsconfig: ts.TranspileOptions = JSON.parse(fs.readFileSync(path.resolve(tsconfigFile, "tsconfig.json"), "utf-8"));
+		options = tsconfig.compilerOptions ?? {};
+	}
+
+	const rootDir = path.join(tsconfigFile, options.rootDir ?? "");
+
+	const compilerOptions: ts.CompilerOptions = {
+		listEmittedFiles: true,
+		declaration: true,
+		declarationMap: true,
+		sourceMap: true,
+		forceConsistentCasingInFileNames: true,
+		allowJs: true,
+		checkJs: false,
+		allowSyntheticDefaultImports: true,
+		noFallthroughCasesInSwitch: true,
+		esModuleInterop: true,
+		resolveJsonModule: true,
+		strict: true,
+		noImplicitAny: false,
+		skipLibCheck: true,
+		pretty: true,
+		noEmitOnError: true,
+		removeComments: false,
+		...options,
+		lib: [...(options.lib ?? []), "esnext", "ES2015"].map((lib) => `lib.${lib.toLowerCase()}.d.ts`),
+		target: ts.ScriptTarget.ESNext,
+		module: ts.ModuleKind.CommonJS,
+		moduleResolution: ts.ModuleResolutionKind.NodeJs,
+		rootDir: typeof options.rootDir === "string" ? rootDir : undefined,
+		outDir: typeof options.outDir === "string" ? path.join(tsconfigFile, options.outDir) : undefined,
+		declarationDir: typeof options.declarationDir === "string" ? path.join(tsconfigFile, options.declarationDir) : undefined,
+		paths: {
+			"*": [`${rootDir.replace(/\\/gi, "/").replace(/\/$/gi, "")}/*`],
+			...Object.fromEntries(Object.entries(options.paths ?? {}).map(([key, value]) => [key, value.map((v) => path.join(rootDir, v).replace(/\\/gi, "/").replace(/\/$/gi, ""))])),
+		},
+	};
+
+	return compilerOptions;
+};
+
 const validateTypeScript = async (filePath: string): Promise<string> => {
 	// Ler o conteúdo do arquivo TypeScript
 	const fileContent = fs.readFileSync(filePath, "utf-8");
 
 	// Carregar as configurações do tsconfig.json (se existir)
-	const configFile = ts.readConfigFile(filePath.replace(/\\/gi, "/"), ts.sys.readFile);
-	const compilerOptions = ts.parseJsonConfigFileContent(configFile.config, ts.sys, "./", undefined, filePath).options;
+	const compilerOptions = getTSCompilerOptions(filePath);
 
 	// Criar o compilador TypeScript
-	const program = ts.createProgram([filePath], {
-		...compilerOptions,
-		target: ts.ScriptTarget.ESNext,
-		module: ts.ModuleKind.CommonJS,
-		esModuleInterop: true,
-		resolveJsonModule: true,
-		strict: true,
-		moduleResolution: ts.ModuleResolutionKind.NodeJs,
-		forceConsistentCasingInFileNames: true,
-	});
+	const program = ts.createProgram([filePath], { ...compilerOptions, outDir: path.resolve(process.cwd(), "dist") });
 
 	// Verificar se há erros no código TypeScript
 	const diagnostics = ts.getPreEmitDiagnostics(program);
@@ -37,20 +78,20 @@ const validateTypeScript = async (filePath: string): Promise<string> => {
 	if (diagnostics.length > 0) {
 		// Exibir erros de validação
 		diagnostics.forEach((diagnostic) => {
+			const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n");
+			const fileName = diagnostic.file?.fileName ?? filePath;
+
 			if (diagnostic.file && diagnostic.start !== undefined) {
 				const { line, character } = diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start);
-				const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n");
-				const fileName = diagnostic.file.fileName;
 				const errorLine = fileContent.split("\n")[line].replace(/\t/g, " ");
 				const errorLength = diagnostic.length || message.length; // Usa o comprimento do erro ou da mensagem
-				const formattedMessage = `\n${colorette.cyan(path.relative(process.cwd(), fileName))}:${colorette.yellow(line + 1)}:${colorette.yellow(character + 1)} - ${colorette.red(
-					"error",
-				)} ${colorette.blue(`TS${diagnostic.code}`)}: ${message}\n\n${colorette.bgWhite(colorette.black(line + 1))} ${errorLine}\n${colorette.bgWhite(" ")} ${" ".repeat(
-					character,
-				)}${colorette.red("~".repeat(errorLength))}\n`;
-				console.error(formattedMessage);
+				console.error(
+					`\n${colorette.cyan(path.relative(process.cwd(), fileName))}:${colorette.yellow(line + 1)}:${colorette.yellow(character + 1)} - ${colorette.red("error")} ${colorette.blue(
+						`TS${diagnostic.code}`,
+					)}: ${message}\n\n${colorette.bgWhite(colorette.black(line + 1))} ${errorLine}\n${colorette.bgWhite(" ")} ${" ".repeat(character)}${colorette.red("~".repeat(errorLength))}\n`,
+				);
 			} else {
-				console.error(ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"), "\n");
+				console.error(`\n${colorette.cyan(path.relative(process.cwd(), fileName))} - ${colorette.red("error")} ${colorette.blue(`TS${diagnostic.code}`)}: ${message}\n`);
 			}
 		});
 		return Promise.reject();
@@ -64,15 +105,11 @@ const compileTypeScript = async (filePath: string): Promise<string> => {
 		const fileContent = await validateTypeScript(filePath);
 
 		// Opções de compilação do TypeScript
-		const compilerOptions: ts.CompilerOptions = {
-			target: ts.ScriptTarget.ESNext, // ou outro alvo adequado
-			module: ts.ModuleKind.CommonJS, // ou outro formato de módulo necessário
-		};
+		const compilerOptions = getTSCompilerOptions(filePath);
 
 		// Compilar o código TypeScript
 		const result = ts.transpileModule(fileContent, {
 			compilerOptions,
-			reportDiagnostics: true,
 			fileName: filePath,
 		});
 		// Retorna o código JavaScript transpilado
@@ -81,11 +118,64 @@ const compileTypeScript = async (filePath: string): Promise<string> => {
 	return "";
 };
 
+const cacheModules = new Map<string, any>();
+
+const importModule = async (filePath: string, ignoreCache: boolean = false) => {
+	if (fs.existsSync(filePath)) {
+		if (fs.statSync(filePath).isDirectory()) {
+			const posibleFiles = fs.readdirSync(filePath).find((file) => {
+				return file.endsWith(".js") || file.endsWith(".ts") || file.endsWith(".cjs") || file.endsWith(".mjs") || file.endsWith(".jsx") || file.endsWith(".tsx");
+			});
+
+			if (posibleFiles) {
+				filePath = path.resolve(filePath, posibleFiles);
+			} else {
+				return {};
+			}
+		}
+	} else {
+		return require(filePath);
+	}
+
+	if (cacheModules.has(filePath) && !ignoreCache) {
+		return cacheModules.get(filePath);
+	}
+
+	const compiledCode = await compileTypeScript(filePath);
+	const exports = {};
+
+	const script = new vm.Script(compiledCode, { filename: filePath });
+	const context = vm.createContext({
+		exports,
+		require: (file: string) => {
+			if (file.startsWith(".") || file.startsWith("/")) {
+				return require(path.resolve(path.dirname(filePath), file));
+			}
+			return require(file);
+		},
+		console,
+	});
+
+	script.runInContext(context);
+
+	cacheModules.set(filePath, exports);
+	return exports;
+};
+
+interface Route {
+	all?: (req: RouteRequest) => any;
+	get?: (req: RouteRequest) => any;
+	post?: (req: RouteRequest) => any;
+	put?: (req: RouteRequest) => any;
+	delete?: (req: RouteRequest) => any;
+	middleware?: ((req: RouteRequest) => any) | ((req: RouteRequest) => any)[];
+}
+
 class FlexRoute extends SimpleEventEmitter {
 	private _ready: boolean = false;
 	private mainPath: string = __dirname;
 	private pathSearchRoutes: string = "";
-	private _routes: Record<string, any> = {};
+	private _routes: Record<string, Route> = {};
 
 	constructor(readonly routePath: string) {
 		super();
@@ -150,22 +240,13 @@ class FlexRoute extends SimpleEventEmitter {
 	private async addRoute(routePath: string) {
 		const p = routePath.replace(/\\/g, "/").replace(this.mainPath.replace(/\\/g, "/"), "").replace("/index.ts", "").replace("/index.js", "");
 
-		const compiledCode = await compileTypeScript(routePath);
-		const exports = {};
-
-		const script = new vm.Script(compiledCode, { filename: routePath });
-		const context = vm.createContext({
-			exports,
-			require: (p: string) => {
-				return require(path.resolve(path.dirname(routePath), p));
-			},
-			console,
-		});
-		script.runInContext(context);
+		const exports: Route = await importModule(routePath, true);
 
 		this._routes[p] = exports;
 
-		// console.log(this._routes);
+		console.log(p);
+
+		console.log(this._routes);
 		// console.log((exports as any).get());
 	}
 

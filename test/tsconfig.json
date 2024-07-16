@@ -1,0 +1,45 @@
+{
+    "ts-node": {
+        "esm": true,
+        "experimentalSpecifierResolution": "node"
+    },
+    "compilerOptions": {
+        "lib": [
+            "esnext",
+            "dom",
+            "ES2015"
+        ],
+        "target": "ESNext",
+        "module": "commonjs",
+        "moduleResolution": "node",
+        "listEmittedFiles": false,
+        "declaration": true,
+        "declarationMap": true,
+        "sourceMap": true,
+        "forceConsistentCasingInFileNames": true,
+        "strict": true,
+        "noImplicitAny": false,
+        "skipLibCheck": true,
+        "esModuleInterop": true,
+        "pretty": true,
+        "resolveJsonModule": true,
+        "noEmitOnError": true,
+        "removeComments": false,
+        "allowJs": true,
+        "checkJs": false,
+        "allowSyntheticDefaultImports": true,
+        "noFallthroughCasesInSwitch": true,
+        "outDir": "./dist/esm",
+        "declarationDir": "./dist/types",
+        "paths": {
+            "../": [
+                "../*"
+            ]
+        }
+    },
+    "compileOnSave": false,
+    "include": [
+        "../src/**/*",
+        "./**/*"
+    ]
+}
