@@ -1,6 +1,9 @@
 import { RouteResponse, RouteRequest } from "../../../../src";
 
-export const get = (req: RouteRequest<{}, "id">) => {
-    console.log("Ok 2");
-    return RouteResponse.json({ message: "Hello World!" });
+export const get = (req: RouteRequest<{}, true>) => {
+	console.log("Ok 2");
+	if (1 === "ewrr") {
+		return null;
+	}
+	return RouteResponse.json({ message: "Hello World!" }, true);
 };
