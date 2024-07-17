@@ -154,6 +154,8 @@ const importModule = async (filePath: string, ignoreCache: boolean = false) => {
 			return require(file);
 		},
 		console,
+		__dirname: path.dirname(filePath),
+		__filename: filePath,
 	});
 
 	script.runInContext(context);
@@ -247,7 +249,7 @@ class FlexRoute extends SimpleEventEmitter {
 		console.log(p);
 
 		console.log(this._routes);
-		// console.log((exports as any).get());
+		console.log((exports as any).get());
 	}
 
 	private changeRoute(routePath: string) {
