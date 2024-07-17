@@ -1,9 +1,7 @@
-import { RouteResponse, RouteRequest } from "../../../../src";
-
+import { RouteResponse, RouteRequest, fetchRoute } from "../../../../src";
 import * as root from "../";
+import * as colorette from "colorette";
 
-export const get = (req: RouteRequest<{}>) => {
-	console.log("Ok 3");
-	root.get();
-	return RouteResponse.json({ message: "Hello World!" });
+export const get = async (req: RouteRequest<{}>) => {
+	return await fetchRoute("/user");
 };

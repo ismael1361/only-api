@@ -3,13 +3,17 @@ import { fileURLToPath } from "url";
 // @ts-ignore
 import { tsImport } from "tsx/esm/api";
 import { text } from "stream/consumers";
-import SimpleEventEmitter from "./utils/SimpleEventEmitter";
+import { PathInfo, SimpleEventEmitter } from "./utils";
 import chokidar from "chokidar";
 import isGlob from "is-glob";
 import fs from "fs";
 import ts from "typescript";
 import * as vm from "vm";
 import * as colorette from "colorette";
+import { FetchOptions, Headers, ParsedUrl, Route, RouteFunction } from "./type";
+import createContext from "fn-context";
+
+export * from "./type";
 
 const getTSCompilerOptions = (filePath: string): ts.CompilerOptions => {
 	let options: ts.CompilerOptions = {};
@@ -120,6 +124,19 @@ const compileTypeScript = async (filePath: string): Promise<string> => {
 
 const cacheModules = new Map<string, any>();
 
+const createCustomRequire = (filePath: string) => {
+	const baseDir = path.dirname(filePath);
+	return (modulePath: string) => {
+		try {
+			const absolutePath = require.resolve(path.join(baseDir, modulePath));
+			return require(absolutePath);
+		} catch (err) {
+			// Se a resolução falhar, use o require padrão para módulos no node_modules
+			return require(modulePath);
+		}
+	};
+};
+
 const importModule = async (filePath: string, ignoreCache: boolean = false) => {
 	if (fs.existsSync(filePath)) {
 		if (fs.statSync(filePath).isDirectory()) {
@@ -147,12 +164,8 @@ const importModule = async (filePath: string, ignoreCache: boolean = false) => {
 	const script = new vm.Script(compiledCode, { filename: filePath });
 	const context = vm.createContext({
 		exports,
-		require: (file: string) => {
-			if (file.startsWith(".") || file.startsWith("/")) {
-				return require(path.resolve(path.dirname(filePath), file));
-			}
-			return require(file);
-		},
+		require: createCustomRequire(filePath),
+		module: {},
 		console,
 		__dirname: path.dirname(filePath),
 		__filename: filePath,
@@ -164,20 +177,49 @@ const importModule = async (filePath: string, ignoreCache: boolean = false) => {
 	return exports;
 };
 
-interface Route {
-	all?: (req: RouteRequest) => any;
-	get?: (req: RouteRequest) => any;
-	post?: (req: RouteRequest) => any;
-	put?: (req: RouteRequest) => any;
-	delete?: (req: RouteRequest) => any;
-	middleware?: ((req: RouteRequest) => any) | ((req: RouteRequest) => any)[];
-}
+const parseUrl = (urlString: string): ParsedUrl => {
+	const urlPattern = /^([^?#]*)(\?[^#]*)?(#.*)?$/;
+	const matches = urlString.match(urlPattern);
+
+	if (!matches) {
+		throw new Error("Invalid URL");
+	}
+
+	const [, pathname, search, hash] = matches;
+
+	const searchParams: Record<string, string> = {};
+	if (search) {
+		search
+			.substring(1)
+			.split("&")
+			.forEach((param) => {
+				const [key, value] = param.split("=");
+				searchParams[decodeURIComponent(key)] = decodeURIComponent(value || "");
+			});
+	}
+
+	return {
+		pathname: pathname || "",
+		search: search || "",
+		searchParams,
+		hash: hash || "",
+	};
+};
+
+const RouteRequestContext = createContext<FetchOptions>({
+	method: "GET",
+	headers: {},
+	body: {},
+	params: {},
+	query: {},
+});
 
 class FlexRoute extends SimpleEventEmitter {
 	private _ready: boolean = false;
 	private mainPath: string = __dirname;
 	private pathSearchRoutes: string = "";
 	private _routes: Record<string, Route> = {};
+	private _routesPath: string[] = [];
 
 	constructor(readonly routePath: string) {
 		super();
@@ -221,20 +263,40 @@ class FlexRoute extends SimpleEventEmitter {
 		});
 	}
 
-	initialize() {
-		chokidar
-			.watch(this.pathSearchRoutes)
-			.on("add", (file) => {
-				this.addRoute(file);
-			})
-			.on("change", (file) => {
-				console.log(`O arquivo ${file} foi modificado!`);
-				this.changeRoute(file);
-			})
-			.on("unlink", (file) => {
-				console.log(`O arquivo ${file} foi removido!`);
-				this.removeRoute(file);
-			});
+	async initialize() {
+		await new Promise<void>((resolve) => {
+			let time: NodeJS.Timeout,
+				resolved: boolean = false;
+
+			const resolveReady = () => {
+				if (resolved) {
+					return;
+				}
+				clearTimeout(time);
+				time = setTimeout(() => {
+					resolve();
+					resolved = true;
+				}, 1000);
+			};
+
+			chokidar
+				.watch(this.pathSearchRoutes)
+				.on("add", (file) => {
+					this.addRoute(file);
+					resolveReady();
+				})
+				.on("change", (file) => {
+					console.log(`O arquivo ${file} foi modificado!`);
+					this.changeRoute(file);
+					resolveReady();
+				})
+				.on("unlink", (file) => {
+					console.log(`O arquivo ${file} foi removido!`);
+					this.removeRoute(file);
+					resolveReady();
+				});
+			resolveReady();
+		});
 
 		this.emit("ready");
 	}
@@ -245,11 +307,7 @@ class FlexRoute extends SimpleEventEmitter {
 		const exports: Route = await importModule(routePath, true);
 
 		this._routes[p] = exports;
-
-		console.log(p);
-
-		console.log(this._routes);
-		console.log((exports as any).get());
+		this._routesPath = Object.keys(this._routes);
 	}
 
 	private changeRoute(routePath: string) {
@@ -259,22 +317,143 @@ class FlexRoute extends SimpleEventEmitter {
 	private removeRoute(routePath: string) {
 		const path = routePath.replace(/\\/g, "/").replace(this.mainPath.replace(/\\/g, "/"), "").replace("/index.ts", "").replace("/index.js", "");
 		delete this._routes[path];
+		this._routesPath = Object.keys(this._routes);
+	}
+
+	async fetchRoute(
+		route: string,
+		options: Partial<FetchOptions> = {
+			method: "GET",
+			headers: {},
+			body: {},
+			params: {},
+			query: {},
+		},
+	) {
+		try {
+			const { pathname, searchParams } = parseUrl(route);
+
+			const findRoute = this._routesPath.find((path) => {
+				return PathInfo.get(path).equals(pathname);
+			});
+
+			if (!findRoute) {
+				return Promise.reject(new Error("Route not found!"));
+			}
+
+			const moduleRoute = this._routes[findRoute];
+
+			const method = (options.method ?? "GET").toLowerCase();
+
+			const methodBy =
+				method === "get" && "get" in moduleRoute
+					? "get"
+					: method === "post" && "post" in moduleRoute
+					? "post"
+					: method === "put" && "put" in moduleRoute
+					? "put"
+					: method === "delete" && "delete" in moduleRoute
+					? "delete"
+					: "all" in moduleRoute
+					? "all"
+					: null;
+
+			if (!methodBy) {
+				return Promise.reject(new Error("Method not allowed!"));
+			}
+
+			const getParams = () => {
+				const { length, ...params } = PathInfo.extractVariables(findRoute, pathname);
+				return Object.entries(params).reduce((acc, [key, value]) => {
+					acc[key] = decodeURIComponent(value.toString());
+					return acc;
+				}, {} as Record<string, string>);
+			};
+
+			const parseHeaders = (headers: { [key: string]: string }): Headers => {
+				return Object.entries(headers).reduce((acc, [key, value]) => {
+					acc[key.toLowerCase()] = value;
+					return acc;
+				}, {});
+			};
+
+			return await RouteRequestContext.provider(
+				async () => {
+					try {
+						const valueContext = RouteRequestContext.get();
+
+						const middleware: RouteFunction[] = "middleware" in moduleRoute ? (Array.isArray(moduleRoute.middleware) ? moduleRoute.middleware : [moduleRoute.middleware]) : ([] as any);
+						const callbacks: RouteFunction[] = middleware.concat((Array.isArray(moduleRoute[methodBy]) ? moduleRoute[methodBy] : [moduleRoute[methodBy]]) as any);
+
+						const req = {
+							method: (options.method?.toUpperCase() as any) ?? "GET",
+							headers: { ...parseHeaders(valueContext.headers), ...parseHeaders(options.headers ?? {}) },
+							body: options.body ?? valueContext.body ?? {},
+							params: { ...getParams(), ...(options.params ?? {}) },
+							query: {
+								...valueContext.query,
+								...(options.query ?? {}),
+								...searchParams,
+							},
+						};
+
+						let response: any = null;
+
+						for (let i = 0; i < callbacks.length; i++) {
+							let continueToNext: boolean = false;
+
+							const next = () => {
+								continueToNext = true;
+							};
+
+							response = await Promise.race([callbacks[i](req, next)]);
+
+							if (!continueToNext) {
+								break;
+							}
+						}
+
+						valueContext.headers = req.headers;
+						valueContext.body = req.body;
+
+						RouteRequestContext.set(valueContext);
+
+						return Promise.resolve(response);
+					} catch (e) {
+						return Promise.reject(new Error(e as any));
+					}
+				},
+				{
+					method: options.method ?? "GET",
+					headers: options.headers ?? {},
+					body: options.body ?? {},
+					params: { ...getParams(), ...(options.params ?? {}) },
+					query: {
+						...(options.query ?? {}),
+						...searchParams,
+					},
+				},
+			)();
+		} catch (e) {
+			return Promise.reject(new Error(e as any));
+		}
 	}
 }
 
+let rootFlexRoute: FlexRoute | null = null;
+
 function flexRoute(routePath: string) {
-	return new FlexRoute(routePath);
+	rootFlexRoute = new FlexRoute(routePath);
+	return rootFlexRoute;
 }
 
-export interface RouteRequest<B = any, P extends string = string, Q extends string = string> {
-	body: B;
-	params: {
-		[key in P]: string;
-	};
-	query: {
-		[key in Q]: string;
-	};
-}
+export const fetchRoute = async (route: string, options: Partial<FetchOptions> = {}) => {
+	if (!rootFlexRoute) {
+		throw new Error("FlexRoute not initialized!");
+	}
+
+	return rootFlexRoute.fetchRoute(route, options);
+};
 
 export const RouteResponse = {
 	json: (data: any) => {

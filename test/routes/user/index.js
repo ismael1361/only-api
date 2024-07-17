@@ -1,6 +1,6 @@
 import { RouteResponse } from "../../../src";
 
-export const get = () => {
-	console.log("Ok 1");
+export const get = (req) => {
+	console.log("home", req);
 	return RouteResponse.json({ message: "Hello World!" });
 };
