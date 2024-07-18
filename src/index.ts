@@ -602,7 +602,8 @@ export const fetchRoute = async <T = any>(route: string, options: Partial<FetchO
 		throw new Error("FlexRoute not initialized!");
 	}
 
-	return rootFlexRoute.fetchRoute<T>(route, options);
+	await rootFlexRoute.ready();
+	return await rootFlexRoute.fetchRoute<T>(route, options);
 };
 
 export const getUrlOrigin = (): string => {
