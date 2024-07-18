@@ -285,14 +285,14 @@ const resolvePath = (from: string, to: string): string => {
 		return PathInfo.get(keys).path;
 	};
 
-	if (!to.startsWith("./") && !to.startsWith("../") && to.startsWith("/")) {
+	if (!to.startsWith(".") && !to.startsWith("..") && to.startsWith("/")) {
 		return normalize(to);
 	}
 
 	from = normalize(from);
 	to = normalize(to);
 
-	if (!to.startsWith("./") && !to.startsWith("../")) {
+	if (!to.startsWith(".") && !to.startsWith("..")) {
 		return PathInfo.get([from, to]).path;
 	}
 
