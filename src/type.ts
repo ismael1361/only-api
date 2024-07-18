@@ -39,7 +39,17 @@ export type HeadersProps =
 	| "x-content-type-options"
 	| "x-dns-prefetch-control"
 	| "x-frame-options"
-	| "x-xss-protection";
+	| "x-xss-protection"
+	| "x-requested-with"
+	| "x-forwarded-for"
+	| "x-forwarded-host"
+	| "x-forwarded-proto"
+	| "x-real-ip"
+	| "x-forwarded"
+	| "x-forwarded-server"
+	| "x-forwarded-port"
+	| "x-forwarded-by"
+	| "x-hub-signature";
 
 export type Headers = Partial<Record<HeadersProps, string>> & { [key: string]: string };
 
@@ -50,6 +60,8 @@ export interface FetchOptions {
 	params: Record<string, string>;
 	query: Record<string, string>;
 }
+
+export type RequiresAccess = (users: Record<string, string>) => Promise<boolean>;
 
 export interface RouteRequest<
 	B = any,
@@ -69,6 +81,7 @@ export interface RouteRequest<
 		[key in Q]: string;
 	};
 	cache: SimpleCache<C>;
+	requiresAccess: RequiresAccess;
 }
 
 export type RouteFunction<R = any> = (req: RouteRequest, next: () => void) => R | Promise<R>;

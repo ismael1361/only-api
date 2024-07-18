@@ -414,6 +414,9 @@ class FlexRoute extends SimpleEventEmitter {
 								...searchParams,
 							},
 							cache,
+							requiresAccess: async (users) => {
+								return true;
+							},
 						};
 
 						let response: RouteResponse | undefined;
