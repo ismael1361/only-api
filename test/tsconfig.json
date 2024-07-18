@@ -32,8 +32,11 @@
         "outDir": "./dist/esm",
         "declarationDir": "./dist/types",
         "paths": {
-            "../": [
-                "../*"
+            "src": [
+                "../src"
+            ],
+            "*": [
+                "./*"
             ]
         }
     },

@@ -23,7 +23,6 @@
         "cpy-cli": "^5.0.0",
         "esm": "^3.2.25",
         "ts-node": "^10.9.2",
-        "tsconfig-paths": "^4.2.0",
         "tsx": "^4.16.2",
         "typescript": "^5.5.3"
     },

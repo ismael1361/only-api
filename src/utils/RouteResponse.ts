@@ -1,20 +1,35 @@
-export default class RouteResponse {
+interface RouteResponseOptions<T = any> {
+	response: T | null;
+	type: "json" | "text" | "send" | "status" | "buffer";
+	code: keyof typeof codeStatus;
+	message: string;
+	timeStart: number;
+	timeEnd: number;
+	contentType: string;
+}
+
+export default class RouteResponse<T = any> {
+	readonly response: RouteResponseOptions<T>["response"];
+	readonly contentType?: RouteResponseOptions<T>["contentType"];
+	readonly type: RouteResponseOptions<T>["type"];
+	readonly code: RouteResponseOptions<T>["code"] = 200;
+	readonly status: CodeStatus;
+	readonly message: RouteResponseOptions<T>["message"];
+
 	readonly requisitionTime: {
 		start: number;
 		end: number;
 		duration: number;
 	};
 
-	readonly status: CodeStatus;
+	constructor(options: Partial<RouteResponseOptions<T>> = {}) {
+		const { response = null, contentType, type = "status", code = 200, message = "Ok", timeStart = Date.now(), timeEnd = Date.now() } = options;
 
-	constructor(
-		readonly response: any,
-		readonly type: "json" | "text" | "send" | "status",
-		readonly code: keyof typeof codeStatus = 200,
-		readonly message: string = "OK",
-		timeStart: number = Date.now(),
-		timeEnd: number = Date.now(),
-	) {
+		this.response = response ?? null;
+		this.contentType = contentType;
+		this.type = type;
+		this.code = code;
+		this.message = message;
 		this.status = codeStatus[this.code];
 
 		this.requisitionTime = {
@@ -24,20 +39,28 @@ export default class RouteResponse {
 		};
 	}
 
-	static json(data: any) {
-		return new RouteResponse(data, "json");
+	static json<T extends Record<string, any> = { [k: string]: any }>(data: T) {
+		return new RouteResponse<T>({ response: data, type: "json" });
 	}
 
-	static text(data: any) {
-		return new RouteResponse(data, "text");
+	static text(data: string, contentType: string = "text/plain") {
+		return new RouteResponse<string>({ response: data, type: "text", contentType });
 	}
 
-	static send(data: any) {
-		return new RouteResponse(data, "send");
+	static buffer(data: Buffer, contentType: string = "application/octet-stream") {
+		return new RouteResponse<Buffer>({ response: data, type: "buffer", contentType });
+	}
+
+	static send<T = any>(data: T, contentType?: string) {
+		return new RouteResponse<T>({ response: data, contentType, type: "send" });
+	}
+
+	static error(code: keyof typeof codeStatus, message: string) {
+		return new RouteResponse<null>({ type: "status", code, message });
 	}
 
 	static status(code: keyof typeof codeStatus, message: string = "OK") {
-		return new RouteResponse(null, "status", code, message);
+		return new RouteResponse<null>({ type: "status", code, message });
 	}
 }
 

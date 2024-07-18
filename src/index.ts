@@ -1,11 +1,6 @@
 import path from "path";
-import { fileURLToPath } from "url";
-// @ts-ignore
-import { tsImport } from "tsx/esm/api";
-import { text } from "stream/consumers";
 import { PathInfo, SimpleCache, SimpleEventEmitter, RouteResponse } from "./utils";
 import chokidar from "chokidar";
-import isGlob from "is-glob";
 import fs from "fs";
 import ts from "typescript";
 import * as vm from "vm";
@@ -57,11 +52,9 @@ const getTSCompilerOptions = (filePath: string): ts.CompilerOptions => {
 		rootDir: typeof options.rootDir === "string" ? rootDir : undefined,
 		outDir: typeof options.outDir === "string" ? path.join(tsconfigFile, options.outDir) : undefined,
 		declarationDir: typeof options.declarationDir === "string" ? path.join(tsconfigFile, options.declarationDir) : undefined,
-		paths: {
-			"*": [`${rootDir.replace(/\\/gi, "/").replace(/\/$/gi, "")}/*`],
-			...Object.fromEntries(Object.entries(options.paths ?? {}).map(([key, value]) => [key, value.map((v) => path.join(rootDir, v).replace(/\\/gi, "/").replace(/\/$/gi, ""))])),
-		},
 	};
+
+	compilerOptions.baseUrl = compilerOptions.baseUrl ?? compilerOptions.rootDir ?? tsconfigFile;
 
 	return compilerOptions;
 };
@@ -104,6 +97,26 @@ const validateTypeScript = async (filePath: string): Promise<string> => {
 	return fileContent;
 };
 
+const resolveModule = (specifier: string, baseUrl?: string, paths?: ts.MapLike<string[]>): string => {
+	if (baseUrl && paths) {
+		const absoluteBaseUrl = path.resolve(baseUrl);
+		for (const [key, values] of Object.entries(paths)) {
+			const pattern = new RegExp(`^${key.replace(/\*/g, "(.*)")}$`);
+			const match = specifier.match(pattern);
+			if (match) {
+				for (const value of values) {
+					const resolvedPath = path.join(absoluteBaseUrl, value.replace(/\*/g, match[1]));
+					if (fs.existsSync(resolvedPath)) {
+						return resolvedPath;
+					}
+				}
+			}
+		}
+	}
+	// Caso não tenha tsconfig paths ou não resolva, retorna o especificador original
+	return specifier;
+};
+
 const compileTypeScript = async (filePath: string): Promise<string> => {
 	try {
 		const fileContent = await validateTypeScript(filePath);
@@ -115,6 +128,29 @@ const compileTypeScript = async (filePath: string): Promise<string> => {
 		const { outputText, sourceMapText } = ts.transpileModule(fileContent, {
 			compilerOptions: { ...compilerOptions, sourceMap: true },
 			fileName: filePath,
+			transformers: {
+				before: [
+					(context) => {
+						return (sourceFile): any => {
+							function visitor(node: ts.Node): ts.Node {
+								if (ts.isImportDeclaration(node)) {
+									const moduleSpecifier = (node.moduleSpecifier as ts.StringLiteral).text;
+									const resolvedModule = resolveModule(moduleSpecifier, compilerOptions.baseUrl, compilerOptions.paths);
+									return ts.factory.updateImportDeclaration(
+										node,
+										node.modifiers,
+										node.importClause,
+										ts.factory.createStringLiteral(resolvedModule),
+										node.assertClause, // Adiciona o parâmetro assertClause
+									);
+								}
+								return ts.visitEachChild(node, visitor, context);
+							}
+							return ts.visitNode(sourceFile, visitor);
+						};
+					},
+				],
+			},
 		});
 
 		// Retorna o código JavaScript transpilado
@@ -231,6 +267,41 @@ const logError = (error: Error) => {
 	const lines = stack.split("\n").slice(1);
 	const [_, t, file, ln, col] = lines[0].match(/at (.+) \((.+):(\d+):(\d+)\)/i) ?? [];
 	logTrace("error", message, file, ln ? Number(ln) : undefined, col ? Number(col) : undefined);
+};
+
+const resolvePath = (from: string, to: string): string => {
+	const normalize = (path: string) => {
+		const keys = PathInfo.get(path).keys.reduce((acc, key, index) => {
+			if (index === 0) {
+				acc.push(key);
+			} else if (key === "..") {
+				acc.pop();
+			} else if (key !== ".") {
+				acc.push(key);
+			}
+			return acc;
+		}, [] as Array<string | number>);
+
+		return PathInfo.get(keys).path;
+	};
+
+	if (!(to.startsWith("./") || to.startsWith("../"))) {
+		return normalize(to);
+	}
+
+	from = normalize(from);
+	to = normalize(to);
+
+	const keys = PathInfo.get(to).keys.reduce((acc, key) => {
+		if (key === "..") {
+			acc.pop();
+		} else if (key !== ".") {
+			acc.push(key);
+		}
+		return acc;
+	}, PathInfo.get(from).keys);
+
+	return PathInfo.get(keys).path;
 };
 
 class FlexRoute extends SimpleEventEmitter {
@@ -351,7 +422,7 @@ class FlexRoute extends SimpleEventEmitter {
 		this._routesCache.delete(path);
 	}
 
-	async fetchRoute(
+	async fetchRoute<T = any>(
 		route: string,
 		options: Partial<FetchOptions> = {
 			method: "GET",
@@ -360,15 +431,20 @@ class FlexRoute extends SimpleEventEmitter {
 			params: {},
 			query: {},
 		},
-	): Promise<RouteResponse> {
+	): Promise<RouteResponse<T>> {
 		const initialyTime = Date.now();
 
 		try {
 			await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
-			const { pathname, searchParams } = parseUrl(route);
+			const localPath = getUrlOrigin();
+			const { pathname: pn, searchParams } = parseUrl(route);
+
+			const pathname = resolvePath(localPath, pn);
 
 			const routePath = pathname.replace(/^\//gi, "").replace(/\/$/gi, "");
+
+			const fnPath = "__flex_route_path__" + encodeURI(routePath);
 
 			const findRoute = this._routesPath.find((path) => {
 				return PathInfo.get(path).equals(routePath);
@@ -414,8 +490,8 @@ class FlexRoute extends SimpleEventEmitter {
 				}, {});
 			};
 
-			const response = await RouteRequestContext.provider(
-				async (): Promise<RouteResponse> => {
+			const fn = {
+				[fnPath]: async (): Promise<RouteResponse> => {
 					try {
 						await new Promise<void>((resolve) => setTimeout(resolve, 0));
 						const valueContext = RouteRequestContext.get();
@@ -468,25 +544,44 @@ class FlexRoute extends SimpleEventEmitter {
 						return Promise.resolve(response);
 					} catch (e) {
 						logError(e as any);
-						return new RouteResponse(null, "text", 500, String(e).replace(/(Error\:\s?)+/gi, "Error: "), initialyTime, Date.now());
+						return new RouteResponse({
+							code: 500,
+							message: String(e).replace(/(Error\:\s?)+/gi, "Error: "),
+							timeStart: initialyTime,
+							timeEnd: Date.now(),
+						});
 					}
 				},
-				{
-					method: options.method ?? "GET",
-					headers: options.headers ?? {},
-					body: options.body ?? {},
-					params: { ...getParams(), ...(options.params ?? {}) },
-					query: {
-						...(options.query ?? {}),
-						...searchParams,
-					},
-				},
-			)();
+			};
 
-			return new RouteResponse(response.response, response.type, response.code, response.message, initialyTime, Date.now());
+			const response = await RouteRequestContext.provider(fn[fnPath], {
+				method: options.method ?? "GET",
+				headers: options.headers ?? {},
+				body: options.body ?? {},
+				params: { ...getParams(), ...(options.params ?? {}) },
+				query: {
+					...(options.query ?? {}),
+					...searchParams,
+				},
+			})();
+
+			return new RouteResponse({
+				response: response.response,
+				contentType: response.contentType,
+				type: response.type,
+				code: response.code,
+				message: response.message,
+				timeStart: initialyTime,
+				timeEnd: Date.now(),
+			});
 		} catch (e) {
 			logError(e as any);
-			return new RouteResponse(null, "text", 500, String(e).replace(/(Error\:\s?)+/gi, "Error: "), initialyTime, Date.now());
+			return new RouteResponse({
+				code: 500,
+				message: String(e).replace(/(Error\:\s?)+/gi, "Error: "),
+				timeStart: initialyTime,
+				timeEnd: Date.now(),
+			});
 		}
 	}
 }
@@ -498,12 +593,31 @@ function flexRoute(routePath: string) {
 	return rootFlexRoute;
 }
 
-export const fetchRoute = async (route: string, options: Partial<FetchOptions> = {}) => {
+export const fetchRoute = async <T = any>(route: string, options: Partial<FetchOptions> = {}) => {
 	if (!rootFlexRoute) {
 		throw new Error("FlexRoute not initialized!");
 	}
 
-	return rootFlexRoute.fetchRoute(route, options);
+	return rootFlexRoute.fetchRoute<T>(route, options);
+};
+
+export const getUrlOrigin = (): string => {
+	Error.stackTraceLimit = Infinity;
+	const stack = (new Error().stack ?? "").split("\n");
+
+	for (const frame of stack) {
+		const match = frame.match(/at (.+) \((.+):(\d+):(\d+)\)/i);
+		if (!match) {
+			continue;
+		}
+		const [_, t] = match;
+		const [before, after] = t.split("__flex_route_path__");
+		if (typeof after === "string") {
+			return "/" + decodeURI(after);
+		}
+	}
+
+	return "/";
 };
 
 export { RouteResponse };

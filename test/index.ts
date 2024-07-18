@@ -3,7 +3,7 @@ import flexRoute from "../src";
 const app = flexRoute("./routes");
 
 app.ready().then(() => {
-	app.fetchRoute("/user/123?type=1", {
+	app.fetchRoute("/user/123 ok?type=1", {
 		method: "GET",
 		headers: {
 			"Content-Type": "application/json",

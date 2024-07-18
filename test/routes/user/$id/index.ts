@@ -1,5 +1,6 @@
-import { RouteResponse, RouteRequest, fetchRoute } from "../../../../src";
+import { RouteResponse, RouteRequest, fetchRoute } from "src";
 
 export const get = async (req: RouteRequest<{}>) => {
-	return await fetchRoute("/user");
+	const res = await fetchRoute<{ message: string }>("../");
+	return res;
 };
