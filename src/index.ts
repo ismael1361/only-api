@@ -377,20 +377,14 @@ class FlexRoute extends SimpleEventEmitter {
 			chokidar
 				.watch(this.pathSearchRoutes)
 				.on("add", (file) => {
-					const p = file.replace(/\\/g, "/").replace(this.mainPath.replace(/\\/g, "/"), "").replace("/index.ts", "").replace("/index.js", "");
-					logTrace("info", `Rota "${p}" foi adicionado!`, file);
 					this.addRoute(file);
 					resolveReady();
 				})
 				.on("change", (file) => {
-					const p = file.replace(/\\/g, "/").replace(this.mainPath.replace(/\\/g, "/"), "").replace("/index.ts", "").replace("/index.js", "");
-					logTrace("info", `Rota "${p}" foi alterado!`, file);
 					this.changeRoute(file);
 					resolveReady();
 				})
 				.on("unlink", (file) => {
-					const p = file.replace(/\\/g, "/").replace(this.mainPath.replace(/\\/g, "/"), "").replace("/index.ts", "").replace("/index.js", "");
-					logTrace("warn", `Rota "${p}" foi removido!`, file);
 					this.removeRoute(file);
 					resolveReady();
 				});
@@ -411,6 +405,12 @@ class FlexRoute extends SimpleEventEmitter {
 			this._routesCache.set(p, new SimpleCache(exports.cacheOptions));
 		}
 
+		if (p in this._routes) {
+			logTrace("info", `Rota "${p}" foi alterado!`, routePath);
+		} else {
+			logTrace("info", `Rota "${p}" foi adicionado!`, routePath);
+		}
+
 		this._routes[p] = exports;
 		this._routesPath = Object.keys(this._routes);
 	}
@@ -424,6 +424,7 @@ class FlexRoute extends SimpleEventEmitter {
 		delete this._routes[path];
 		this._routesPath = Object.keys(this._routes);
 		this._routesCache.delete(path);
+		logTrace("warn", `Rota "${path}" foi removido!`, routePath);
 	}
 
 	async fetchRoute<T = any>(
@@ -542,7 +543,7 @@ class FlexRoute extends SimpleEventEmitter {
 						}
 
 						if (!(response instanceof RouteResponse)) {
-							return Promise.resolve(RouteResponse.status(200, "OK"));
+							return Promise.resolve(RouteResponse.send(response));
 						}
 
 						return Promise.resolve(response);

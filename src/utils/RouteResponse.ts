@@ -40,7 +40,7 @@ export default class RouteResponse<T = any> {
 	}
 
 	static json<T extends Record<string, any> = { [k: string]: any }>(data: T) {
-		return new RouteResponse<T>({ response: data, type: "json" });
+		return new RouteResponse<T>({ response: data, type: "json", contentType: "application/json" });
 	}
 
 	static text(data: string, contentType: string = "text/plain") {
@@ -52,6 +52,15 @@ export default class RouteResponse<T = any> {
 	}
 
 	static send<T = any>(data: T, contentType?: string) {
+		if (!contentType) {
+			if (["[object Object]", "[object Array]"].includes(Object.prototype.toString.call(data))) {
+				contentType = "application/json";
+			} else if (typeof data === "string") {
+				contentType = "text/plain";
+			} else {
+				contentType = "application/octet-stream";
+			}
+		}
 		return new RouteResponse<T>({ response: data, contentType, type: "send" });
 	}
 
