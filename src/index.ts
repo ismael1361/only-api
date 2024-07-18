@@ -112,12 +112,13 @@ const compileTypeScript = async (filePath: string): Promise<string> => {
 		const compilerOptions = getTSCompilerOptions(filePath);
 
 		// Compilar o código TypeScript
-		const result = ts.transpileModule(fileContent, {
-			compilerOptions,
+		const { outputText, sourceMapText } = ts.transpileModule(fileContent, {
+			compilerOptions: { ...compilerOptions, sourceMap: true },
 			fileName: filePath,
 		});
+
 		// Retorna o código JavaScript transpilado
-		return result.outputText;
+		return `${outputText}\n//# sourceMappingURL=data:application/json;base64,${Buffer.from(sourceMapText ?? "").toString("base64")}`;
 	} catch {}
 	return "";
 };
@@ -214,6 +215,24 @@ const RouteRequestContext = createContext<FetchOptions>({
 	query: {},
 });
 
+const logTrace = (type: "error" | "warn" | "verb" | "info" | "log", message: string, fileName: string, ln?: number, col?: number) => {
+	const typeFormat = type === "error" ? colorette.red("error") : type === "warn" ? colorette.yellow(type) : colorette.blue(type);
+
+	console.error(
+		`\n${colorette.cyan(path.relative(process.cwd(), fileName))}${
+			typeof ln === "number" && typeof col === "number" ? `:${colorette.yellow(ln)}:${colorette.yellow(col)}` : ""
+		} - ${typeFormat}: ${message}\n`,
+	);
+};
+
+const logError = (error: Error) => {
+	const message: string = error.message;
+	const stack: string = error.stack ?? "";
+	const lines = stack.split("\n").slice(1);
+	const [_, t, file, ln, col] = lines[0].match(/at (.+) \((.+):(\d+):(\d+)\)/i) ?? [];
+	logTrace("error", message, file, ln ? Number(ln) : undefined, col ? Number(col) : undefined);
+};
+
 class FlexRoute extends SimpleEventEmitter {
 	private _ready: boolean = false;
 	private mainPath: string = __dirname;
@@ -283,16 +302,20 @@ class FlexRoute extends SimpleEventEmitter {
 			chokidar
 				.watch(this.pathSearchRoutes)
 				.on("add", (file) => {
+					const p = file.replace(/\\/g, "/").replace(this.mainPath.replace(/\\/g, "/"), "").replace("/index.ts", "").replace("/index.js", "");
+					logTrace("info", `Rota "${p}" foi adicionado!`, file);
 					this.addRoute(file);
 					resolveReady();
 				})
 				.on("change", (file) => {
-					console.log(`O arquivo ${file} foi modificado!`);
+					const p = file.replace(/\\/g, "/").replace(this.mainPath.replace(/\\/g, "/"), "").replace("/index.ts", "").replace("/index.js", "");
+					logTrace("info", `Rota "${p}" foi alterado!`, file);
 					this.changeRoute(file);
 					resolveReady();
 				})
 				.on("unlink", (file) => {
-					console.log(`O arquivo ${file} foi removido!`);
+					const p = file.replace(/\\/g, "/").replace(this.mainPath.replace(/\\/g, "/"), "").replace("/index.ts", "").replace("/index.js", "");
+					logTrace("warn", `Rota "${p}" foi removido!`, file);
 					this.removeRoute(file);
 					resolveReady();
 				});
@@ -345,8 +368,10 @@ class FlexRoute extends SimpleEventEmitter {
 
 			const { pathname, searchParams } = parseUrl(route);
 
+			const routePath = pathname.replace(/^\//gi, "").replace(/\/$/gi, "");
+
 			const findRoute = this._routesPath.find((path) => {
-				return PathInfo.get(path).equals(pathname);
+				return PathInfo.get(path).equals(routePath);
 			});
 
 			if (!findRoute) {
@@ -375,7 +400,7 @@ class FlexRoute extends SimpleEventEmitter {
 			}
 
 			const getParams = () => {
-				const { length, ...params } = PathInfo.extractVariables(findRoute, pathname);
+				const { length, ...params } = PathInfo.extractVariables(findRoute, routePath);
 				return Object.entries(params).reduce((acc, [key, value]) => {
 					acc[key] = decodeURIComponent(value.toString());
 					return acc;
@@ -442,7 +467,8 @@ class FlexRoute extends SimpleEventEmitter {
 
 						return Promise.resolve(response);
 					} catch (e) {
-						return Promise.reject(new Error(e as any));
+						logError(e as any);
+						return new RouteResponse(null, "text", 500, String(e).replace(/(Error\:\s?)+/gi, "Error: "), initialyTime, Date.now());
 					}
 				},
 				{
@@ -459,7 +485,8 @@ class FlexRoute extends SimpleEventEmitter {
 
 			return new RouteResponse(response.response, response.type, response.code, response.message, initialyTime, Date.now());
 		} catch (e) {
-			return Promise.reject(new Error(e as any));
+			logError(e as any);
+			return new RouteResponse(null, "text", 500, String(e).replace(/(Error\:\s?)+/gi, "Error: "), initialyTime, Date.now());
 		}
 	}
 }
