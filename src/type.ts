@@ -1,3 +1,5 @@
+import { SimpleCache } from "./utils";
+
 export type HeadersProps =
 	| "content-type"
 	| "authorization"
@@ -49,7 +51,14 @@ export interface FetchOptions {
 	query: Record<string, string>;
 }
 
-export interface RouteRequest<B = any, P extends string = string, Q extends string = string> {
+export interface RouteRequest<
+	B = any,
+	P extends string = string,
+	Q extends string = string,
+	C extends Record<string, any> = {
+		[key: string]: any;
+	},
+> {
 	method: "GET" | "POST" | "PUT" | "DELETE";
 	headers: Headers;
 	body: B;
@@ -59,17 +68,19 @@ export interface RouteRequest<B = any, P extends string = string, Q extends stri
 	query: {
 		[key in Q]: string;
 	};
+	cache: SimpleCache<C>;
 }
 
-export type RouteFunction = (req: RouteRequest, next: () => void) => any | Promise<any>;
+export type RouteFunction<R = any> = (req: RouteRequest, next: () => void) => R | Promise<R>;
 
-export interface Route {
-	all?: RouteFunction | RouteFunction[];
-	get?: RouteFunction | RouteFunction[];
-	post?: RouteFunction | RouteFunction[];
-	put?: RouteFunction | RouteFunction[];
-	delete?: RouteFunction | RouteFunction[];
-	middleware?: RouteFunction | RouteFunction[];
+export interface Route<R = any> {
+	all?: RouteFunction<R> | RouteFunction<R>[];
+	get?: RouteFunction<R> | RouteFunction<R>[];
+	post?: RouteFunction<R> | RouteFunction<R>[];
+	put?: RouteFunction<R> | RouteFunction<R>[];
+	delete?: RouteFunction<R> | RouteFunction<R>[];
+	middleware?: RouteFunction<R> | RouteFunction<R>[];
+	cacheOptions?: SimpleCacheOptions;
 }
 
 export interface ParsedUrl {
@@ -77,4 +88,15 @@ export interface ParsedUrl {
 	search: string;
 	searchParams: Record<string, string>;
 	hash: string;
+}
+
+export interface SimpleCacheOptions {
+	/** O número de segundos para manter os itens em cache após sua última atualização */
+	expirySeconds: number;
+	/** Indica se deve-se clonar profundamente os valores armazenados para protegê-los de ajustes acidentais */
+	cloneValues?: boolean;
+	/** Quantidade máxima de entradas para manter em cache */
+	maxEntries?: number;
+	/** Se verdadeiro, atualiza o tempo de expiração ao acessar um valor em cache */
+	updateExpiration?: boolean;
 }

@@ -3,14 +3,14 @@ import { fileURLToPath } from "url";
 // @ts-ignore
 import { tsImport } from "tsx/esm/api";
 import { text } from "stream/consumers";
-import { PathInfo, SimpleEventEmitter } from "./utils";
+import { PathInfo, SimpleCache, SimpleEventEmitter, RouteResponse } from "./utils";
 import chokidar from "chokidar";
 import isGlob from "is-glob";
 import fs from "fs";
 import ts from "typescript";
 import * as vm from "vm";
 import * as colorette from "colorette";
-import { FetchOptions, Headers, ParsedUrl, Route, RouteFunction } from "./type";
+import { FetchOptions, Headers, ParsedUrl, Route, RouteFunction, RouteRequest } from "./type";
 import createContext from "fn-context";
 
 export * from "./type";
@@ -218,8 +218,9 @@ class FlexRoute extends SimpleEventEmitter {
 	private _ready: boolean = false;
 	private mainPath: string = __dirname;
 	private pathSearchRoutes: string = "";
-	private _routes: Record<string, Route> = {};
+	private _routes: Record<string, Route<RouteResponse>> = {};
 	private _routesPath: string[] = [];
+	private _routesCache: Map<string, SimpleCache> = new Map();
 
 	constructor(readonly routePath: string) {
 		super();
@@ -304,7 +305,13 @@ class FlexRoute extends SimpleEventEmitter {
 	private async addRoute(routePath: string) {
 		const p = routePath.replace(/\\/g, "/").replace(this.mainPath.replace(/\\/g, "/"), "").replace("/index.ts", "").replace("/index.js", "");
 
-		const exports: Route = await importModule(routePath, true);
+		const exports: Route<RouteResponse> = await importModule(routePath, true);
+
+		if (this._routesCache.has(p)) {
+			this._routesCache.get(p)?.applyOptions(exports.cacheOptions);
+		} else {
+			this._routesCache.set(p, new SimpleCache(exports.cacheOptions));
+		}
 
 		this._routes[p] = exports;
 		this._routesPath = Object.keys(this._routes);
@@ -318,6 +325,7 @@ class FlexRoute extends SimpleEventEmitter {
 		const path = routePath.replace(/\\/g, "/").replace(this.mainPath.replace(/\\/g, "/"), "").replace("/index.ts", "").replace("/index.js", "");
 		delete this._routes[path];
 		this._routesPath = Object.keys(this._routes);
+		this._routesCache.delete(path);
 	}
 
 	async fetchRoute(
@@ -329,8 +337,12 @@ class FlexRoute extends SimpleEventEmitter {
 			params: {},
 			query: {},
 		},
-	) {
+	): Promise<RouteResponse> {
+		const initialyTime = Date.now();
+
 		try {
+			await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
 			const { pathname, searchParams } = parseUrl(route);
 
 			const findRoute = this._routesPath.find((path) => {
@@ -358,7 +370,7 @@ class FlexRoute extends SimpleEventEmitter {
 					? "all"
 					: null;
 
-			if (!methodBy) {
+			if (!methodBy || typeof moduleRoute[methodBy] !== "function") {
 				return Promise.reject(new Error("Method not allowed!"));
 			}
 
@@ -377,15 +389,21 @@ class FlexRoute extends SimpleEventEmitter {
 				}, {});
 			};
 
-			return await RouteRequestContext.provider(
-				async () => {
+			const response = await RouteRequestContext.provider(
+				async (): Promise<RouteResponse> => {
 					try {
+						await new Promise<void>((resolve) => setTimeout(resolve, 0));
 						const valueContext = RouteRequestContext.get();
 
-						const middleware: RouteFunction[] = "middleware" in moduleRoute ? (Array.isArray(moduleRoute.middleware) ? moduleRoute.middleware : [moduleRoute.middleware]) : ([] as any);
+						const middleware: RouteFunction[] = (
+							"middleware" in moduleRoute ? (Array.isArray(moduleRoute.middleware) ? moduleRoute.middleware : [moduleRoute.middleware]) : ([] as any[])
+						).filter((fn) => typeof fn === "function");
+
 						const callbacks: RouteFunction[] = middleware.concat((Array.isArray(moduleRoute[methodBy]) ? moduleRoute[methodBy] : [moduleRoute[methodBy]]) as any);
 
-						const req = {
+						const cache = this._routesCache.get(findRoute) ?? new SimpleCache();
+
+						const req: RouteRequest = {
 							method: (options.method?.toUpperCase() as any) ?? "GET",
 							headers: { ...parseHeaders(valueContext.headers), ...parseHeaders(options.headers ?? {}) },
 							body: options.body ?? valueContext.body ?? {},
@@ -395,9 +413,10 @@ class FlexRoute extends SimpleEventEmitter {
 								...(options.query ?? {}),
 								...searchParams,
 							},
+							cache,
 						};
 
-						let response: any = null;
+						let response: RouteResponse | undefined;
 
 						for (let i = 0; i < callbacks.length; i++) {
 							let continueToNext: boolean = false;
@@ -411,12 +430,12 @@ class FlexRoute extends SimpleEventEmitter {
 							if (!continueToNext) {
 								break;
 							}
+							await new Promise<void>((resolve) => setTimeout(resolve, 0));
 						}
 
-						valueContext.headers = req.headers;
-						valueContext.body = req.body;
-
-						RouteRequestContext.set(valueContext);
+						if (!(response instanceof RouteResponse)) {
+							return Promise.resolve(RouteResponse.status(200, "OK"));
+						}
 
 						return Promise.resolve(response);
 					} catch (e) {
@@ -434,6 +453,8 @@ class FlexRoute extends SimpleEventEmitter {
 					},
 				},
 			)();
+
+			return new RouteResponse(response.response, response.type, response.code, response.message, initialyTime, Date.now());
 		} catch (e) {
 			return Promise.reject(new Error(e as any));
 		}
@@ -455,26 +476,6 @@ export const fetchRoute = async (route: string, options: Partial<FetchOptions> =
 	return rootFlexRoute.fetchRoute(route, options);
 };
 
-export const RouteResponse = {
-	json: (data: any) => {
-		return data;
-	},
-	text: (data: any) => {
-		return data;
-	},
-	send: (data: any) => {
-		return data;
-	},
-	status: (code: number) => {
-		return {
-			json: (data: any) => {
-				return data;
-			},
-			send: (data: any) => {
-				return data;
-			},
-		};
-	},
-};
+export { RouteResponse };
 
 export default flexRoute;
