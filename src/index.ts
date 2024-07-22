@@ -59,7 +59,7 @@ const getTSCompilerOptions = (filePath: string): ts.CompilerOptions => {
 	return compilerOptions;
 };
 
-const validateTypeScript = async (filePath: string): Promise<string> => {
+const validateTypeScript = (filePath: string): string => {
 	// Ler o conteúdo do arquivo TypeScript
 	const fileContent = fs.readFileSync(filePath, "utf-8");
 
@@ -91,7 +91,8 @@ const validateTypeScript = async (filePath: string): Promise<string> => {
 				console.error(`\n${colorette.cyan(path.relative(process.cwd(), fileName))} - ${colorette.red("error")} ${colorette.blue(`TS${diagnostic.code}`)}: ${message}\n`);
 			}
 		});
-		return Promise.reject();
+
+		return "";
 	}
 
 	return fileContent;
@@ -117,9 +118,9 @@ const resolveModule = (specifier: string, baseUrl?: string, paths?: ts.MapLike<s
 	return specifier;
 };
 
-const compileTypeScript = async (filePath: string): Promise<string> => {
+const compileTypeScript = (filePath: string): string => {
 	try {
-		const fileContent = await validateTypeScript(filePath);
+		const fileContent = validateTypeScript(filePath);
 
 		// Opções de compilação do TypeScript
 		const compilerOptions = getTSCompilerOptions(filePath);
@@ -154,31 +155,103 @@ const compileTypeScript = async (filePath: string): Promise<string> => {
 		});
 
 		// Retorna o código JavaScript transpilado
-		return `${outputText}\n//# sourceMappingURL=data:application/json;base64,${Buffer.from(sourceMapText ?? "").toString("base64")}`;
+		return `${outputText.replace(/\n\/\/\# sourceMappingURL\=(.+)$/gi, "")}\n//# sourceMappingURL=data:application/json;base64,${Buffer.from(sourceMapText ?? "").toString("base64")}`;
 	} catch {}
 	return "";
 };
 
 const cacheModules = new Map<string, any>();
+const observeModules = new Map<string, { event?: fs.StatsListener; modules: Record<string, () => void> }>();
 
-const createCustomRequire = (filePath: string) => {
+const createCustomRequire = (filePath: string, onMutate?: () => void) => {
 	const baseDir = path.dirname(filePath);
 	return (modulePath: string) => {
 		try {
-			const absolutePath = require.resolve(path.join(baseDir, modulePath));
-			return require(absolutePath);
+			let absolutePath = fs.existsSync(modulePath)
+				? modulePath
+				: fs.existsSync(path.join(baseDir, modulePath))
+				? path.join(baseDir, modulePath)
+				: require.resolve(path.join(baseDir, modulePath));
+
+			const isFlexModule = PathInfo.get(__dirname).equals(absolutePath) || PathInfo.get(__dirname).isParentOf(absolutePath) || PathInfo.get(__dirname).isAncestorOf(absolutePath);
+
+			if (isFlexModule || !fs.existsSync(absolutePath) || absolutePath.includes("node_modules")) {
+				throw new Error("Invalid module path");
+			}
+
+			if (fs.statSync(absolutePath).isDirectory()) {
+				const posibleFiles = fs.readdirSync(absolutePath).find((file) => {
+					return (
+						file.endsWith("index.js") || file.endsWith("index.ts") || file.endsWith("index.cjs") || file.endsWith("index.mjs") || file.endsWith("index.jsx") || file.endsWith("index.tsx")
+					);
+				});
+
+				if (posibleFiles) {
+					absolutePath = path.resolve(absolutePath, posibleFiles);
+				}
+			}
+
+			const updateImport = () => {
+				importModule(absolutePath, true, updateImport);
+				const callbacks = Object.values(observeModules.get(absolutePath)?.modules ?? {});
+				for (const callback of callbacks) {
+					callback();
+				}
+			};
+
+			const module = importModule(absolutePath, false, updateImport);
+
+			const observer = observeModules.get(absolutePath) ?? {
+				event: undefined,
+				modules: {},
+			};
+
+			if (observer.event) {
+				fs.unwatchFile(absolutePath, observer.event);
+			}
+
+			observer.event = (curr, prev) => {
+				if (curr.mtime !== prev.mtime) {
+					updateImport();
+				}
+			};
+
+			if (typeof onMutate === "function") {
+				observer.modules[filePath] = onMutate;
+			}
+
+			observeModules.set(absolutePath, observer);
+			fs.watchFile(absolutePath, observer.event);
+
+			return module;
 		} catch (err) {
-			// Se a resolução falhar, use o require padrão para módulos no node_modules
 			return require(modulePath);
 		}
 	};
 };
 
-const importModule = async (filePath: string, ignoreCache: boolean = false) => {
+const getGlobalContext = (filePath: string, exports: Record<string, any>, onMutateImports?: () => void) => {
+	const globalContext = Object.create(global);
+
+	globalContext.__filename = filePath;
+	globalContext.__dirname = path.dirname(filePath);
+	globalContext.console = console;
+	globalContext.setTimeout = setTimeout;
+	globalContext.clearTimeout = clearTimeout;
+	globalContext.setInterval = setInterval;
+	globalContext.clearInterval = clearInterval;
+	globalContext.process = process;
+	globalContext.require = createCustomRequire(filePath, onMutateImports);
+	globalContext.exports = exports;
+
+	return globalContext;
+};
+
+const importModule = (filePath: string, ignoreCache: boolean = false, onMutateImports?: () => void) => {
 	if (fs.existsSync(filePath)) {
 		if (fs.statSync(filePath).isDirectory()) {
 			const posibleFiles = fs.readdirSync(filePath).find((file) => {
-				return file.endsWith(".js") || file.endsWith(".ts") || file.endsWith(".cjs") || file.endsWith(".mjs") || file.endsWith(".jsx") || file.endsWith(".tsx");
+				return file.endsWith("index.js") || file.endsWith("index.ts") || file.endsWith("index.cjs") || file.endsWith("index.mjs") || file.endsWith("index.jsx") || file.endsWith("index.tsx");
 			});
 
 			if (posibleFiles) {
@@ -195,18 +268,11 @@ const importModule = async (filePath: string, ignoreCache: boolean = false) => {
 		return cacheModules.get(filePath);
 	}
 
-	const compiledCode = await compileTypeScript(filePath);
+	const compiledCode = compileTypeScript(filePath);
 	const exports = {};
 
 	const script = new vm.Script(compiledCode, { filename: filePath });
-	const context = vm.createContext({
-		exports,
-		require: createCustomRequire(filePath),
-		module: {},
-		console,
-		__dirname: path.dirname(filePath),
-		__filename: filePath,
-	});
+	const context = vm.createContext(getGlobalContext(filePath, exports, onMutateImports));
 
 	script.runInContext(context);
 
@@ -397,7 +463,9 @@ class FlexRoute extends SimpleEventEmitter {
 	private async addRoute(routePath: string) {
 		const p = routePath.replace(/\\/g, "/").replace(this.mainPath.replace(/\\/g, "/"), "").replace("/index.ts", "").replace("/index.js", "");
 
-		const exports: Route<RouteResponse> = await importModule(routePath, true);
+		const exports: Route<RouteResponse> = await importModule(routePath, true, () => {
+			this.addRoute(routePath);
+		});
 
 		if (this._routesCache.has(p)) {
 			this._routesCache.get(p)?.applyOptions(exports.cacheOptions);

@@ -2,7 +2,7 @@ import flexRoute from "../src";
 
 const app = flexRoute("./routes");
 
-app.ready().then(() => {
+const get = () => {
 	app.fetchRoute("/user/123 ok?type=1", {
 		method: "GET",
 		headers: {
@@ -11,4 +11,11 @@ app.ready().then(() => {
 	}).then((res) => {
 		console.log(res);
 	});
+};
+
+app.ready().then(() => {
+	get();
+	get();
+	get();
+	get();
 });

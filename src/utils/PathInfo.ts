@@ -11,7 +11,7 @@ export class PathReference {
 }
 
 function getPathKeys(path: string): Array<string | number> {
-	path = path.replace(/\[/g, "/[").replace(/^\/+/, "").replace(/\/+$/, ""); // Substitua `[` por `/[`, remova barras invertidas iniciais, remova barras invertidas finais
+	path = path.replace(/\[/g, "/[").replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, ""); // Substitua `[` por `/[`, remova barras invertidas iniciais, remova barras invertidas finais
 	if (path.length === 0) {
 		return [""];
 	}

@@ -6,7 +6,6 @@
     "compilerOptions": {
         "lib": [
             "esnext",
-            "dom",
             "ES2015"
         ],
         "target": "ESNext",
