@@ -15,7 +15,4 @@ const get = () => {
 
 app.ready().then(() => {
 	get();
-	get();
-	get();
-	get();
 });

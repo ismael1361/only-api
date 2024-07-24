@@ -1,4 +1,5 @@
 import { SimpleCache } from "./utils";
+import Express from "express";
 
 export type HeadersProps =
 	| "content-type"
@@ -59,6 +60,11 @@ export interface FetchOptions {
 	body: Blob | Buffer | string | URLSearchParams | Record<string, any>;
 	params: Record<string, string>;
 	query: Record<string, string>;
+	__config: {
+		req: Express.Request;
+		res: Express.Response;
+		fnCache?: (value: any) => void;
+	};
 }
 
 export type RequiresAccess = (users: Record<string, string>) => Promise<boolean>;
