@@ -1,33 +1,14 @@
-import { RouteCacheContext, RoutePathContext, RouteRequestContext } from "../contexts";
-import cors from "cors";
-import { getCorsHeaders, getStackTrace, RouteResponse, SimpleCache } from "../utils";
+import { corsSync } from "../utils/Cors";
+import { RouteConfigContext, RoutePathContext } from "../contexts";
+import { getCorsHeaders, RouteResponse, SimpleCache, cors } from "../utils";
 
 /**
  * Obter a origem da URL
  * @returns A origem da URL
  */
 export const getUrlOrigin = (): string => {
-	console.log(getStackTrace());
-	console.log();
 	const { original, parsed } = RoutePathContext.get();
 	return original;
-
-	// Error.stackTraceLimit = Infinity;
-	// const stack = (new Error().stack ?? "").split("\n");
-
-	// for (const frame of stack) {
-	// 	const match = frame.match(/at (.+) \((.+):(\d+):(\d+)\)/i);
-	// 	if (!match) {
-	// 		continue;
-	// 	}
-	// 	const [_, t] = match;
-	// 	const [before, after] = t.split("__flex_route_path__");
-	// 	if (typeof after === "string") {
-	// 		return "/" + decodeURI(after);
-	// 	}
-	// }
-
-	// return "/";
 };
 
 const cacheRoutes = new SimpleCache();
@@ -38,22 +19,21 @@ const cacheRoutes = new SimpleCache();
  * @param id Um identificador único para a rota
  * @returns A resposta armazenada em cache
  */
-export const cacheResponse = (duration: number, id: string = ""): RouteResponse | undefined => {
+export const cacheControl = (duration: number, id: string = ""): void => {
 	duration = typeof duration === "number" ? duration : 15;
 	const { original, parsed } = RoutePathContext.get();
 	const key = encodeURI(`${parsed}_${id}`);
 	const value: RouteResponse | undefined = cacheRoutes.get(key);
 
 	if (!value) {
-		RouteCacheContext.set({
-			fn(value: RouteResponse) {
-				cacheRoutes.set(key, value, duration);
-				console.log("cacheRoutes", key);
-			},
-		});
+		RouteConfigContext.value.cacheRoute = function (value: RouteResponse) {
+			cacheRoutes.set(key, value, duration);
+		};
 	}
 
-	return value;
+	if (cacheRoutes.has(key)) {
+		throw new Error(`__cache_control_response__${id}`);
+	}
 };
 
 /**
@@ -62,8 +42,6 @@ export const cacheResponse = (duration: number, id: string = ""): RouteResponse 
  * @returns A resposta armazenada em cache
  */
 export const getCachedResponse = (id: string = ""): RouteResponse | undefined => {
-	console.log(getStackTrace());
-	console.log();
 	const { original, parsed } = RoutePathContext.get();
 	const key = encodeURI(`${parsed}_${id}`);
 	return cacheRoutes.get(key);
@@ -117,38 +95,81 @@ export const hasCache = (id: string = ""): boolean => {
  * await corsOringin("https://meu.servidor.com", "Content-Type, Authorization, Content-Length, Accept, Origin, X-Requested-With, DataBase-Context");
  * ```
  */
-export const corsOringin = (origin: string | string[], exposeHeaders?: string | string[]): Promise<void> => {
-	const { __config } = RouteRequestContext.get();
-	const { req, res } = __config;
+export const corsOringin = (origin: string | string[], exposeHeaders?: string | string[]): void => {
+	const { req, res } = RouteConfigContext.get();
 
-	return new Promise((resolve, reject) => {
-		try {
-			const headers: {
-				[name: string]: string;
-			} = getCorsHeaders(origin, req.headers.origin, exposeHeaders);
+	if (!req || !res) {
+		return;
+	}
 
-			for (const name in headers) {
-				res.setHeader(name, headers[name]);
+	const headers: {
+		[name: string]: string;
+	} = getCorsHeaders(origin, req.headers.origin, exposeHeaders);
+
+	for (const name in headers) {
+		res.setHeader(name, headers[name]);
+	}
+
+	const allowed = corsSync(
+		(req, callback) => {
+			const corsOptions = { origin: false };
+			const whitelist = headers["Access-Control-Allow-Origin"].split(/,\s*/);
+
+			if (whitelist.includes(req.headers.origin ?? "") || whitelist.includes("*")) {
+				corsOptions.origin = true;
 			}
 
-			cors((req, callback) => {
-				const corsOptions = { origin: false };
-				const whitelist = headers["Access-Control-Allow-Origin"].split(/,\s*/);
+			callback(null, corsOptions);
+		},
+		req,
+		res,
+	);
 
-				if (whitelist.includes(req.headers.origin ?? "") || whitelist.includes("*")) {
-					corsOptions.origin = true;
-				}
+	if (!allowed) {
+		throw new Error("Origin not allowed");
+	}
+};
 
-				callback(null, corsOptions);
-			})(req, res, () => {
-				if (res && typeof (res as any).status === "function" && !(res as any).finished) {
-					resolve();
-				} else {
-					reject(new Error("Origin not allowed!"));
-				}
-			});
-		} catch (e) {
-			reject(e);
+/**
+ * Requer acesso para acessar uma rota
+ * @param users Usuários e senhas permitidos
+ * @returns Uma promessa que resolve quando o acesso é permitido
+ *
+ * @example
+ * ```typescript
+ * await requiresAccess({
+ * 	"admin": "123456",
+ * 	"user": ["123456", "654321"]
+ * });
+ * ```
+ */
+export const requiresAccess = (users: Record<string, string | string[]>): void => {
+	const { req, res } = RouteConfigContext.get();
+
+	if (!req || !res) {
+		return;
+	}
+
+	const sign = req.headers["x-hub-signature"];
+
+	if (!sign) {
+		const execute = () => {
+			res.setHeader("www-authenticate", `Basic`);
+			res.sendStatus(401).send("Authentication required");
+		};
+
+		const authorization = req.headers.authorization;
+
+		if (!authorization) {
+			execute();
+			throw new Error("Authorization header not found");
 		}
-	});
+
+		const [username_send, password_send] = Buffer.from(authorization.replace("Basic ", ""), "base64").toString().split(":");
+
+		if (!(username_send in users && users[username_send].includes(password_send))) {
+			execute();
+			throw new Error("Invalid username or password");
+		}
+	}
 };

@@ -1,5 +1,52 @@
-import { SimpleCache } from "./utils";
-import Express from "express";
+import type { SimpleCache } from "./utils";
+import type { Request } from "express";
+
+export interface FlexRouteOptions {
+	host: string;
+	port: number;
+	maxPayloadSize: string;
+	allowOrigin: string | string[];
+	cors?: CorsOptions;
+	trustProxy: boolean;
+}
+
+export type StaticOrigin = boolean | string | RegExp | Array<boolean | string | RegExp>;
+
+export type CustomOrigin = (requestOrigin: string | undefined, callback: (err: Error | null, origin?: StaticOrigin) => void) => void;
+
+export interface CorsOptions {
+	/**
+	 * @default '*''
+	 */
+	origin?: StaticOrigin | CustomOrigin | undefined;
+	/**
+	 * @default 'GET,HEAD,PUT,PATCH,POST,DELETE'
+	 */
+	methods?: string | string[] | undefined;
+	allowedHeaders?: string | string[] | undefined;
+	exposedHeaders?: string | string[] | undefined;
+	credentials?: boolean | undefined;
+	maxAge?: number | undefined;
+	/**
+	 * @default false
+	 */
+	preflightContinue?: boolean | undefined;
+	/**
+	 * @default 204
+	 */
+	optionsSuccessStatus?: number | undefined;
+	headers?: string | string[] | undefined;
+}
+
+export type CorsOptionsDelegate = (req: Request, callback: (err: Error | null, options?: CorsOptions) => void) => void;
+
+export type CorsHeaders =
+	| {
+			key: string;
+			value: any;
+	  }
+	| Array<CorsHeaders>
+	| null;
 
 export type HeadersProps =
 	| "content-type"
@@ -60,11 +107,6 @@ export interface FetchOptions {
 	body: Blob | Buffer | string | URLSearchParams | Record<string, any>;
 	params: Record<string, string>;
 	query: Record<string, string>;
-	__config: {
-		req: Express.Request;
-		res: Express.Response;
-		fnCache?: (value: any) => void;
-	};
 }
 
 export type RequiresAccess = (users: Record<string, string>) => Promise<boolean>;

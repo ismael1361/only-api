@@ -1,5 +1,7 @@
 import createContext from "fn-context";
 import { FetchOptions } from "./type";
+import { RouteResponse } from "./utils";
+import { Request, Response } from "express";
 
 export const RouteRequestContext = createContext<FetchOptions>({
 	method: "GET",
@@ -7,7 +9,6 @@ export const RouteRequestContext = createContext<FetchOptions>({
 	body: {},
 	params: {},
 	query: {},
-	__config: {} as any,
 });
 
 export const RoutePathContext = createContext<{
@@ -23,7 +24,11 @@ export const RoutePathContext = createContext<{
 	},
 );
 
-export const RouteCacheContext = createContext<{ fn?: (value: any) => void }>(
+export const RouteConfigContext = createContext<{
+	req?: Request;
+	res?: Response;
+	cacheRoute?: (value: RouteResponse) => void;
+}>(
 	{},
 	{
 		individual: true,

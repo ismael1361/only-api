@@ -1,11 +1,12 @@
 import path from "path";
-import { PathInfo, SimpleCache, SimpleEventEmitter, RouteResponse, parseUrl, resolvePath, getStackTrace } from "./utils";
+import { PathInfo, SimpleCache, SimpleEventEmitter, RouteResponse, parseUrl, resolvePath, joinObject, cors } from "./utils";
 import chokidar from "chokidar";
-import { FetchOptions, Headers, Route, RouteFunction, RouteRequest } from "./type";
+import { FetchOptions, FlexRouteOptions, Headers, Route, RouteFunction, RouteRequest } from "./type";
 import { importModule } from "./tsUtils";
 import { logError, logTrace } from "./log";
 import { getCachedResponse, getUrlOrigin } from "./tools";
-import { RouteCacheContext, RoutePathContext, RouteRequestContext } from "./contexts";
+import { RouteConfigContext, RoutePathContext, RouteRequestContext } from "./contexts";
+import express, { Request, Response } from "express";
 
 export * from "./type";
 export * from "./tools";
@@ -17,9 +18,24 @@ class FlexRoute extends SimpleEventEmitter {
 	private _routes: Record<string, Route<RouteResponse>> = {};
 	private _routesPath: string[] = [];
 	private _routesCache: Map<string, SimpleCache> = new Map();
+	private options: FlexRouteOptions;
+	private app: ReturnType<typeof express>;
 
-	constructor(readonly routePath: string) {
+	constructor(readonly routePath: string, options: Partial<FlexRouteOptions> | ReturnType<typeof express> = {}) {
 		super();
+
+		this.options = joinObject<FlexRouteOptions>(
+			{
+				host: "localhost",
+				port: 3000,
+				allowOrigin: "*",
+				maxPayloadSize: "100mb",
+				trustProxy: false,
+			},
+			options instanceof express ? ({} as any) : options,
+		);
+
+		this.app = options instanceof express ? (options as any) : express();
 
 		const stack = (new Error().stack ?? "").split("\n");
 
@@ -93,7 +109,40 @@ class FlexRoute extends SimpleEventEmitter {
 			resolveReady();
 		});
 
-		this.emit("ready");
+		this.app.get(
+			"/*",
+			cors({
+				origin: this.options.allowOrigin,
+			}),
+			this.options.cors ? cors(this.options.cors) : (req, res, next) => next(),
+			async (req, res) => {
+				const route = req.originalUrl;
+				const method: any = req.method;
+
+				const response = await this.fetchRoute(
+					route,
+					{
+						method,
+						headers: req.headers as any,
+						params: req.params as any,
+						query: req.query as any,
+					},
+					req,
+					res,
+				);
+
+				try {
+					if (res && typeof res.status === "function" && !(res.finished || res.headersSent || res.destroyed)) {
+						res.status(response.code).json(response.response);
+					}
+				} catch {}
+			},
+		);
+
+		this.app.listen(this.options.port, this.options.host, () => {
+			logTrace("info", `Server started at http://${this.options.host}:${this.options.port}`, this.mainPath);
+			this.emit("ready");
+		});
 	}
 
 	private async addRoute(routePath: string) {
@@ -140,6 +189,8 @@ class FlexRoute extends SimpleEventEmitter {
 			params: {},
 			query: {},
 		},
+		request?: Request,
+		response?: Response,
 	): Promise<RouteResponse<T>> {
 		const initialyTime = Date.now();
 
@@ -158,7 +209,7 @@ class FlexRoute extends SimpleEventEmitter {
 			});
 
 			if (!findRoute) {
-				return Promise.reject(new Error("Route not found!"));
+				throw new Error(`"/${routePath}": Route not found!`);
 			}
 
 			const moduleRoute = this._routes[findRoute];
@@ -179,8 +230,13 @@ class FlexRoute extends SimpleEventEmitter {
 					: null;
 
 			if (!methodBy || typeof moduleRoute[methodBy] !== "function") {
-				return Promise.reject(new Error("Method not allowed!"));
+				throw new Error(`"/${routePath}": Method not allowed!`);
 			}
+
+			const prevConfig = RouteConfigContext.get();
+
+			const res = response ?? prevConfig.res;
+			const req = request ?? prevConfig.req;
 
 			const getParams = () => {
 				const { length, ...params } = PathInfo.extractVariables(findRoute, routePath);
@@ -198,14 +254,13 @@ class FlexRoute extends SimpleEventEmitter {
 			};
 
 			const fn = async (): Promise<RouteResponse> => {
-				console.log(getStackTrace());
 				try {
 					await new Promise<void>((resolve) => setTimeout(resolve, 0));
-					const cached = getCachedResponse();
+					// const cached = getCachedResponse();
 
-					if (cached instanceof RouteResponse) {
-						return Promise.resolve(cached);
-					}
+					// if (cached) {
+					// 	return Promise.resolve(cached);
+					// }
 
 					const valueContext = RouteRequestContext.get();
 
@@ -254,16 +309,21 @@ class FlexRoute extends SimpleEventEmitter {
 						return Promise.resolve(RouteResponse.send(response));
 					}
 
-					const fnCache = RouteCacheContext.get().fn;
+					const fnCache = RouteConfigContext.value.cacheRoute;
 
-					console.log(fnCache);
-
-					if (typeof fnCache === "function") {
+					if (typeof fnCache === "function" && [400, 404].includes(response.code)) {
 						fnCache(response);
 					}
 
 					return Promise.resolve(response);
 				} catch (e) {
+					const [_, idCache] = String(e).split("__cache_control_response__");
+					const cached = getCachedResponse(idCache);
+
+					if (cached) {
+						return Promise.resolve(cached);
+					}
+
 					logError(e as any);
 					return new RouteResponse({
 						code: 500,
@@ -274,11 +334,17 @@ class FlexRoute extends SimpleEventEmitter {
 				}
 			};
 
-			const response = await RouteRequestContext.provider(
-				RoutePathContext.provider(RouteCacheContext.provider(fn), {
-					original: routePath,
-					parsed: findRoute,
-				}),
+			const result = await RouteRequestContext.provider(
+				RoutePathContext.provider(
+					RouteConfigContext.provider(fn, {
+						res,
+						req,
+					}),
+					{
+						original: routePath,
+						parsed: findRoute,
+					},
+				),
 				{
 					method: options.method ?? "GET",
 					headers: options.headers ?? {},
@@ -288,21 +354,20 @@ class FlexRoute extends SimpleEventEmitter {
 						...(options.query ?? {}),
 						...searchParams,
 					},
-					__config: {} as any,
 				},
 			)();
 
 			return new RouteResponse({
-				response: response.response,
-				contentType: response.contentType,
-				type: response.type,
-				code: response.code,
-				message: response.message,
+				response: result.response,
+				contentType: result.contentType,
+				type: result.type,
+				code: result.code,
+				message: result.message,
 				timeStart: initialyTime,
 				timeEnd: Date.now(),
 			});
 		} catch (e) {
-			logError(e as any);
+			// logError(e as any);
 			return new RouteResponse({
 				code: 500,
 				message: String(e).replace(/(Error\:\s?)+/gi, "Error: "),
@@ -315,8 +380,8 @@ class FlexRoute extends SimpleEventEmitter {
 
 let rootFlexRoute: FlexRoute | null = null;
 
-function flexRoute(routePath: string) {
-	rootFlexRoute = new FlexRoute(routePath);
+function flexRoute(routePath: string, options: Partial<FlexRouteOptions> | ReturnType<typeof express> = {}) {
+	rootFlexRoute = new FlexRoute(routePath, options);
 	return rootFlexRoute;
 }
 

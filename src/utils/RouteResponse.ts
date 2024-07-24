@@ -26,7 +26,7 @@ export default class RouteResponse<T = any> {
 		const { response = null, contentType, type = "status", code = 200, message = "Ok", timeStart = Date.now(), timeEnd = Date.now() } = options;
 
 		this.response = response ?? null;
-		this.contentType = contentType;
+		this.contentType = contentType ? contentType : type === "json" ? "application/json" : type === "text" ? "text/plain" : "application/octet-stream";
 		this.type = type;
 		this.code = code;
 		this.message = message;
@@ -35,7 +35,7 @@ export default class RouteResponse<T = any> {
 		this.requisitionTime = {
 			start: timeStart,
 			end: timeEnd,
-			duration: timeEnd - timeStart,
+			duration: parseFloat(((timeEnd - timeStart) / 1000).toFixed(3)),
 		};
 	}
 

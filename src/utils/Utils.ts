@@ -1,6 +1,16 @@
 import { ParsedUrl } from "../type";
 import PathInfo from "./PathInfo";
 
+export const joinObject = <T extends Record<string, any>>(obj: T, partial: Partial<T>): T => {
+	const newObj: T = { ...obj };
+	for (const key in partial) {
+		if (partial.hasOwnProperty(key)) {
+			newObj[key] = partial[key] ?? obj[key];
+		}
+	}
+	return newObj;
+};
+
 export class PartialArray {
 	[index: number]: any;
 	constructor(sparseArray?: { [index: number]: any } | any[]) {
@@ -177,22 +187,3 @@ export const getCorsHeaders = (allowedOrigins: string | string[], currentOrigin?
 
 	return options;
 };
-
-export function getStackTrace(belowFn?: Function): string {
-	const oldLimit = Error.stackTraceLimit;
-	Error.stackTraceLimit = Infinity;
-
-	const dummyObject: Record<string, any> = {};
-
-	const v8Handler = Error.prepareStackTrace;
-	Error.prepareStackTrace = function (dummyObject, v8StackTrace) {
-		return v8StackTrace;
-	};
-	Error.captureStackTrace(dummyObject, belowFn || getStackTrace);
-
-	const v8StackTrace = dummyObject.stack;
-	Error.prepareStackTrace = v8Handler;
-	Error.stackTraceLimit = oldLimit;
-
-	return v8StackTrace.map((callSite: any) => callSite.toString()).join("\n");
-}
