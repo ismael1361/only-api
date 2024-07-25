@@ -3,7 +3,9 @@ import { Users } from "controlers";
 
 export const get = async (req: RouteRequest<{}>) => {
 	corsOringin("*");
+
 	requiresAccess({ root: "admin" });
+
 	cacheControl(15, "user");
 
 	console.log("path:", getUrlOrigin());

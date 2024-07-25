@@ -88,7 +88,7 @@ export const hasCache = (id: string = ""): boolean => {
  * Configura o cabeçalho CORS e ao mesmo tempo valida a origem
  * @param origin Origem permitida
  * @param exposeHeaders Cabeçalhos expostos
- * @returns Uma promessa que resolve quando a origem é permitida
+ * @throws Se a origem não for permitida
  *
  * @example
  * ```typescript
@@ -133,7 +133,7 @@ export const corsOringin = (origin: string | string[], exposeHeaders?: string | 
 /**
  * Requer acesso para acessar uma rota
  * @param users Usuários e senhas permitidos
- * @returns Uma promessa que resolve quando o acesso é permitido
+ * @throws Se o usuário não tiver acesso
  *
  * @example
  * ```typescript
