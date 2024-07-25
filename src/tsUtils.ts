@@ -169,9 +169,9 @@ const createCustomRequire = (filePath: string, onMutate?: () => void) => {
 				? path.join(baseDir, modulePath)
 				: require.resolve(path.join(baseDir, modulePath));
 
-			const isFlexModule = PathInfo.get(__dirname).equals(absolutePath) || PathInfo.get(__dirname).isParentOf(absolutePath) || PathInfo.get(__dirname).isAncestorOf(absolutePath);
+			const isOnlyApiModule = PathInfo.get(__dirname).equals(absolutePath) || PathInfo.get(__dirname).isParentOf(absolutePath) || PathInfo.get(__dirname).isAncestorOf(absolutePath);
 
-			if (isFlexModule || !fs.existsSync(absolutePath) || absolutePath.includes("node_modules")) {
+			if (isOnlyApiModule || !fs.existsSync(absolutePath) || absolutePath.includes("node_modules")) {
 				throw new Error("Invalid module path");
 			}
 

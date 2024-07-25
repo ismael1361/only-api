@@ -1,7 +1,7 @@
 import path from "path";
 import { PathInfo, SimpleCache, SimpleEventEmitter, RouteResponse, parseUrl, resolvePath, joinObject, cors } from "./utils";
 import chokidar from "chokidar";
-import { FetchOptions, FlexRouteOptions, Headers, Route, RouteFunction, RouteRequest } from "./type";
+import { FetchOptions, OnlyApiOptions, Headers, Route, RouteFunction, RouteRequest } from "./type";
 import { importModule } from "./tsUtils";
 import { logError, logTrace } from "./log";
 import { getCachedResponse, getUrlOrigin } from "./tools";
@@ -12,20 +12,20 @@ import { corsSync } from "./utils/Cors";
 export * from "./type";
 export * from "./tools";
 
-class FlexRoute extends SimpleEventEmitter {
+class OnlyApi extends SimpleEventEmitter {
 	private _ready: boolean = false;
 	private mainPath: string = __dirname;
 	private pathSearchRoutes: string = "";
 	private _routes: Record<string, Route<RouteResponse>> = {};
 	private _routesPath: string[] = [];
 	private _routesCache: Map<string, SimpleCache> = new Map();
-	private options: FlexRouteOptions;
+	private options: OnlyApiOptions;
 	private app: ReturnType<typeof express>;
 
-	constructor(readonly routePath: string, options: Partial<FlexRouteOptions> | ReturnType<typeof express> = {}) {
+	constructor(readonly routePath: string, options: Partial<OnlyApiOptions> | ReturnType<typeof express> = {}) {
 		super();
 
-		this.options = joinObject<FlexRouteOptions>(
+		this.options = joinObject<OnlyApiOptions>(
 			{
 				host: "localhost",
 				port: 3000,
@@ -411,22 +411,22 @@ class FlexRoute extends SimpleEventEmitter {
 	}
 }
 
-let rootFlexRoute: FlexRoute | null = null;
+let rootOnlyApi: OnlyApi | null = null;
 
-function flexRoute(routePath: string, options: Partial<FlexRouteOptions> | ReturnType<typeof express> = {}) {
-	rootFlexRoute = new FlexRoute(routePath, options);
-	return rootFlexRoute;
+function onlyApi(routePath: string, options: Partial<OnlyApiOptions> | ReturnType<typeof express> = {}) {
+	rootOnlyApi = new OnlyApi(routePath, options);
+	return rootOnlyApi;
 }
 
 export const fetchRoute = async <T = any>(route: string, options: Partial<FetchOptions> = {}) => {
-	if (!rootFlexRoute) {
-		throw new Error("FlexRoute not initialized!");
+	if (!rootOnlyApi) {
+		throw new Error("OnlyApi not initialized!");
 	}
 
-	await rootFlexRoute.ready();
-	return await rootFlexRoute.fetchRoute<T>(route, options);
+	await rootOnlyApi.ready();
+	return await rootOnlyApi.fetchRoute<T>(route, options);
 };
 
 export { RouteResponse };
 
-export default flexRoute;
+export default onlyApi;

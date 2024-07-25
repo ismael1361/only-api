@@ -8,3 +8,4 @@ test
 create-package-files
 tsconfig-cjs.json
 tsconfig-esm.json
+tsconfig.json

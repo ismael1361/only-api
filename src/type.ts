@@ -1,7 +1,7 @@
 import type { SimpleCache } from "./utils";
 import type { Request } from "express";
 
-export interface FlexRouteOptions {
+export interface OnlyApiOptions {
 	host: string;
 	port: number;
 	maxPayloadSize: string;
