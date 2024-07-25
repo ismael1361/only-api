@@ -152,10 +152,51 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
                     query: req.query,
                 }, req, res);
                 try {
-                    if (res && typeof res.status === "function" && !(res.finished || res.headersSent || res.destroyed)) {
-                        res.setHeader("Content-Type", response.contentType);
-                        res.status(response.code).send(response.response);
+                    if (res.finished || res.headersSent || res.destroyed) {
+                        return;
                     }
+                    res.setHeader("Content-Type", response.content.type);
+                    if (response.content.length) {
+                        res.setHeader("Content-Length", response.content.length.toString());
+                    }
+                    if (response.content.disposition) {
+                        res.setHeader("Content-Disposition", response.content.disposition);
+                    }
+                    if (typeof response.content.attachment === "boolean") {
+                        res.setHeader("Content-Disposition", response.content.attachment ? "attachment" : "inline");
+                    }
+                    else if (typeof response.content.attachment === "string") {
+                        res.setHeader("Content-Disposition", `attachment; filename="${response.content.attachment}"`);
+                    }
+                    if (typeof response.content.security === "object") {
+                        if (response.content.security.policy) {
+                            res.setHeader("Content-Security-Policy", response.content.security.policy);
+                        }
+                        if (typeof response.content.security.reportOnly === "boolean") {
+                            res.setHeader("Content-Security-Policy-Report-Only", response.content.security.reportOnly ? "true" : "false");
+                        }
+                        else if (typeof response.content.security.reportOnly === "string") {
+                            res.setHeader("Content-Security-Policy-Report-Only", response.content.security.reportOnly);
+                        }
+                    }
+                    else if (typeof response.content.security === "string") {
+                        res.setHeader("Content-Security-Policy", response.content.security);
+                    }
+                    if (response.type === "stream") {
+                        const stream = response.response;
+                        stream.on("data", (chunk) => {
+                            res.write(chunk);
+                        });
+                        stream.on("end", () => {
+                            res.end();
+                        });
+                        stream.on("error", (err) => {
+                            res.status(500).send(err.message);
+                        });
+                        stream.pipe(res);
+                        return;
+                    }
+                    res.status(response.code).send(response.response);
                 }
                 catch (_b) { }
             },
@@ -324,7 +365,7 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
             })();
             return new utils_1.RouteResponse({
                 response: result.response,
-                contentType: result.contentType,
+                content: result.content,
                 type: result.type,
                 code: result.code,
                 message: result.message,

@@ -1,17 +1,21 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+const stream_1 = require("stream");
 class RouteResponse {
     response;
-    contentType;
+    content;
     type;
     code = 200;
     status;
     message;
     requisitionTime;
     constructor(options = {}) {
-        const { response = null, contentType, type = "status", code = 200, message = "Ok", timeStart = Date.now(), timeEnd = Date.now() } = options;
+        const { response = null, content, type = "status", code = 200, message = "Ok", timeStart = Date.now(), timeEnd = Date.now() } = options;
         this.response = response ?? null;
-        this.contentType = contentType ? contentType : type === "json" ? "application/json" : type === "text" ? "text/plain" : "application/octet-stream";
+        this.content = {
+            type: type === "json" ? "application/json" : type === "text" ? "text/plain" : "application/octet-stream",
+            ...content,
+        };
         this.type = type;
         this.code = code;
         this.message = message;
@@ -30,7 +34,7 @@ class RouteResponse {
      * RouteResponse.json({ message: "Hello, World!" });
      */
     static json(data) {
-        return new RouteResponse({ response: data, type: "json", contentType: "application/json" });
+        return new RouteResponse({ response: data, type: "json", content: { type: "application/json" } });
     }
     /**
      * Retorna uma resposta de texto com o corpo fornecido
@@ -41,8 +45,14 @@ class RouteResponse {
      * RouteResponse.text("Hello, World!");
      * RouteResponse.text("Hello, World!", "text/html");
      */
-    static text(data, contentType = "text/plain") {
-        return new RouteResponse({ response: data, type: "text", contentType });
+    static text(data, content = "text/plain") {
+        const c = typeof content === "string"
+            ? {
+                type: content,
+                length: data.length,
+            }
+            : content;
+        return new RouteResponse({ response: data, type: "text", content: c });
     }
     /**
      * Retorna uma resposta de HTML com o corpo fornecido
@@ -63,8 +73,14 @@ class RouteResponse {
      * RouteResponse.buffer(Buffer.from("Hello, World!"));
      * RouteResponse.buffer(Buffer.from("Hello, World!"), "text/plain");
      */
-    static buffer(data, contentType = "application/octet-stream") {
-        return new RouteResponse({ response: data, type: "buffer", contentType });
+    static buffer(data, content = "application/octet-stream") {
+        const c = typeof content === "string"
+            ? {
+                type: content,
+                length: data.length,
+            }
+            : content;
+        return new RouteResponse({ response: data, type: "buffer", content: c });
     }
     /**
      * Retorna uma resposta de stream com o corpo fornecido
@@ -76,8 +92,28 @@ class RouteResponse {
      * RouteResponse.stream(fs.createReadStream("file.txt"), "text/plain");
      * RouteResponse.stream((start, end) => chunk.slice(start, end));
      */
-    static stream(stream, contentType = "application/octet-stream") {
-        return new RouteResponse({ response: stream, type: "stream", contentType });
+    static stream(stream, content = "application/octet-stream") {
+        let start = 0;
+        const response = stream instanceof Function
+            ? new stream_1.Readable({
+                read(size) {
+                    const chunk = stream(start, start + size);
+                    if (chunk) {
+                        start += chunk.length;
+                        this.push(chunk);
+                    }
+                    else {
+                        this.push(null);
+                    }
+                },
+            })
+            : stream;
+        const c = typeof content === "string"
+            ? {
+                type: content,
+            }
+            : content;
+        return new RouteResponse({ response, type: "stream", content: c });
     }
     /**
      * Retorna uma resposta com o corpo fornecido
@@ -89,19 +125,25 @@ class RouteResponse {
      * RouteResponse.send("Hello, World!");
      * RouteResponse.send(Buffer.from("Hello, World!"));
      */
-    static send(data, contentType) {
-        if (!contentType) {
+    static send(data, content) {
+        if (!content) {
             if (["[object Object]", "[object Array]"].includes(Object.prototype.toString.call(data))) {
-                contentType = "application/json";
+                content = "application/json";
             }
             else if (typeof data === "string") {
-                contentType = "text/plain";
+                content = "text/plain";
             }
             else {
-                contentType = "application/octet-stream";
+                content = "application/octet-stream";
             }
         }
-        return new RouteResponse({ response: data, contentType, type: "send" });
+        const c = typeof content === "string"
+            ? {
+                type: content,
+                length: data?.length,
+            }
+            : content;
+        return new RouteResponse({ response: data, content: c, type: "send" });
     }
     /**
      * Retorna uma resposta de erro com o código e a mensagem fornecidos
@@ -126,24 +168,24 @@ class RouteResponse {
      */
     static status(code, message = "OK") {
         return {
-            send: (data, contentType) => {
-                const response = RouteResponse.send(data, contentType);
+            send: (data, content) => {
+                const response = RouteResponse.send(data, content);
                 return new RouteResponse({ ...response, code, message });
             },
             json: (data) => {
                 const response = RouteResponse.json(data);
                 return new RouteResponse({ ...response, code, message });
             },
-            text: (data, contentType) => {
-                const response = RouteResponse.text(data, contentType);
+            text: (data, content) => {
+                const response = RouteResponse.text(data, content);
                 return new RouteResponse({ ...response, code, message });
             },
             html: (data) => {
                 const response = RouteResponse.html(data);
                 return new RouteResponse({ ...response, code, message });
             },
-            buffer: (data, contentType) => {
-                const response = RouteResponse.buffer(data, contentType);
+            buffer: (data, content) => {
+                const response = RouteResponse.buffer(data, content);
                 return new RouteResponse({ ...response, code, message });
             },
         };

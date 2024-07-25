@@ -5,12 +5,22 @@ interface RouteResponseOptions<T = any> {
     message: string;
     timeStart: number;
     timeEnd: number;
-    contentType: string;
+    content: Partial<ContentInfo>;
 }
 type StreamCallback = (start: number, end: number) => string | Buffer | null;
+interface ContentInfo {
+    type: string;
+    length?: number;
+    disposition?: string;
+    attachment?: boolean | string;
+    security?: Partial<{
+        policy: string;
+        reportOnly: boolean | string;
+    }> | string;
+}
 export default class RouteResponse<T = any> {
     readonly response: RouteResponseOptions<T>["response"];
-    readonly contentType: RouteResponseOptions<T>["contentType"];
+    readonly content: ContentInfo;
     readonly type: RouteResponseOptions<T>["type"];
     readonly code: RouteResponseOptions<T>["code"];
     readonly status: CodeStatus;
@@ -40,7 +50,7 @@ export default class RouteResponse<T = any> {
      * RouteResponse.text("Hello, World!");
      * RouteResponse.text("Hello, World!", "text/html");
      */
-    static text(data: string, contentType?: string): RouteResponse<string>;
+    static text(data: string, content?: string | ContentInfo): RouteResponse<string>;
     /**
      * Retorna uma resposta de HTML com o corpo fornecido
      * @param data O corpo da resposta
@@ -58,7 +68,7 @@ export default class RouteResponse<T = any> {
      * RouteResponse.buffer(Buffer.from("Hello, World!"));
      * RouteResponse.buffer(Buffer.from("Hello, World!"), "text/plain");
      */
-    static buffer(data: Buffer, contentType?: string): RouteResponse<Buffer>;
+    static buffer(data: Buffer, content?: string | ContentInfo): RouteResponse<Buffer>;
     /**
      * Retorna uma resposta de stream com o corpo fornecido
      * @param stream O corpo da resposta
@@ -69,7 +79,7 @@ export default class RouteResponse<T = any> {
      * RouteResponse.stream(fs.createReadStream("file.txt"), "text/plain");
      * RouteResponse.stream((start, end) => chunk.slice(start, end));
      */
-    static stream(stream: NodeJS.ReadableStream | StreamCallback, contentType?: string): RouteResponse<NodeJS.ReadableStream | StreamCallback>;
+    static stream(stream: NodeJS.ReadableStream | StreamCallback, content?: string | ContentInfo): RouteResponse<NodeJS.ReadableStream>;
     /**
      * Retorna uma resposta com o corpo fornecido
      * @param data O corpo da resposta
@@ -80,7 +90,7 @@ export default class RouteResponse<T = any> {
      * RouteResponse.send("Hello, World!");
      * RouteResponse.send(Buffer.from("Hello, World!"));
      */
-    static send<T = any>(data: T, contentType?: string): RouteResponse<T>;
+    static send<T = any>(data: T, content?: string | ContentInfo): RouteResponse<T>;
     /**
      * Retorna uma resposta de erro com o código e a mensagem fornecidos
      * @param code O código de status do erro
@@ -101,13 +111,13 @@ export default class RouteResponse<T = any> {
      * RouteResponse.status(200).json({ message: "Hello, World!" });
      */
     static status(code: keyof typeof codeStatus, message?: string): {
-        send: <T = any>(data: T, contentType?: string) => RouteResponse<T>;
+        send: <T = any>(data: T, content?: string | ContentInfo) => RouteResponse<T>;
         json: <T extends Record<string, any> = {
             [k: string]: any;
         }>(data: T) => RouteResponse<T>;
-        text: (data: string, contentType?: string) => RouteResponse<string>;
+        text: (data: string, content?: string | ContentInfo) => RouteResponse<string>;
         html: (data: string) => RouteResponse<string>;
-        buffer: (data: Buffer, contentType?: string) => RouteResponse<Buffer>;
+        buffer: (data: Buffer, content?: string | ContentInfo) => RouteResponse<Buffer>;
     };
 }
 declare const codeStatus: {
