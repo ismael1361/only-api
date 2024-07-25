@@ -5,9 +5,10 @@ export interface FlexRouteOptions {
 	host: string;
 	port: number;
 	maxPayloadSize: string;
-	allowOrigin: string | string[];
+	allowOrigin: StaticOrigin;
 	cors?: CorsOptions;
 	trustProxy: boolean;
+	middlewares: Array<(req: Request, res: Response, next: () => void) => void>;
 }
 
 export type StaticOrigin = boolean | string | RegExp | Array<boolean | string | RegExp>;
@@ -129,7 +130,6 @@ export interface RouteRequest<
 		[key in Q]: string;
 	};
 	cache: SimpleCache<C>;
-	requiresAccess: RequiresAccess;
 }
 
 export type RouteFunction<R = any> = (req: RouteRequest, next: () => void) => R | Promise<R>;

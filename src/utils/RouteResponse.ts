@@ -1,6 +1,6 @@
 interface RouteResponseOptions<T = any> {
 	response: T | null;
-	type: "json" | "text" | "send" | "status" | "buffer";
+	type: "json" | "text" | "send" | "status" | "buffer" | "stream";
 	code: keyof typeof codeStatus;
 	message: string;
 	timeStart: number;
@@ -8,9 +8,11 @@ interface RouteResponseOptions<T = any> {
 	contentType: string;
 }
 
+type StreamCallback = (start: number, end: number) => string | Buffer | null;
+
 export default class RouteResponse<T = any> {
 	readonly response: RouteResponseOptions<T>["response"];
-	readonly contentType?: RouteResponseOptions<T>["contentType"];
+	readonly contentType: RouteResponseOptions<T>["contentType"];
 	readonly type: RouteResponseOptions<T>["type"];
 	readonly code: RouteResponseOptions<T>["code"] = 200;
 	readonly status: CodeStatus;
@@ -39,18 +41,78 @@ export default class RouteResponse<T = any> {
 		};
 	}
 
+	/**
+	 * Retorna uma resposta JSON com o corpo fornecido
+	 * @param data O corpo da resposta
+	 * @returns A resposta JSON
+	 * @example
+	 * RouteResponse.json({ message: "Hello, World!" });
+	 */
 	static json<T extends Record<string, any> = { [k: string]: any }>(data: T) {
 		return new RouteResponse<T>({ response: data, type: "json", contentType: "application/json" });
 	}
 
+	/**
+	 * Retorna uma resposta de texto com o corpo fornecido
+	 * @param data O corpo da resposta
+	 * @param contentType O tipo de conteúdo da resposta
+	 * @returns A resposta de texto
+	 * @example
+	 * RouteResponse.text("Hello, World!");
+	 * RouteResponse.text("Hello, World!", "text/html");
+	 */
 	static text(data: string, contentType: string = "text/plain") {
 		return new RouteResponse<string>({ response: data, type: "text", contentType });
 	}
 
+	/**
+	 * Retorna uma resposta de HTML com o corpo fornecido
+	 * @param data O corpo da resposta
+	 * @returns A resposta de HTML
+	 * @example
+	 * RouteResponse.html("<h1>Hello, World!</h1>");
+	 */
+	static html(data: string) {
+		return RouteResponse.text(data, "text/html");
+	}
+
+	/**
+	 * Retorna uma resposta de buffer com o corpo fornecido
+	 * @param data O corpo da resposta
+	 * @param contentType O tipo de conteúdo da resposta
+	 * @returns A resposta de buffer
+	 * @example
+	 * RouteResponse.buffer(Buffer.from("Hello, World!"));
+	 * RouteResponse.buffer(Buffer.from("Hello, World!"), "text/plain");
+	 */
 	static buffer(data: Buffer, contentType: string = "application/octet-stream") {
 		return new RouteResponse<Buffer>({ response: data, type: "buffer", contentType });
 	}
 
+	/**
+	 * Retorna uma resposta de stream com o corpo fornecido
+	 * @param stream O corpo da resposta
+	 * @param contentType O tipo de conteúdo da resposta
+	 * @returns A resposta de stream
+	 * @example
+	 * RouteResponse.stream(fs.createReadStream("file.txt"));
+	 * RouteResponse.stream(fs.createReadStream("file.txt"), "text/plain");
+	 * RouteResponse.stream((start, end) => chunk.slice(start, end));
+	 */
+	static stream(stream: NodeJS.ReadableStream | StreamCallback, contentType: string = "application/octet-stream") {
+		return new RouteResponse<typeof stream>({ response: stream, type: "stream", contentType });
+	}
+
+	/**
+	 * Retorna uma resposta com o corpo fornecido
+	 * @param data O corpo da resposta
+	 * @param contentType O tipo de conteúdo da resposta
+	 * @returns A resposta
+	 * @example
+	 * RouteResponse.send({ message: "Hello, World!" });
+	 * RouteResponse.send("Hello, World!");
+	 * RouteResponse.send(Buffer.from("Hello, World!"));
+	 */
 	static send<T = any>(data: T, contentType?: string) {
 		if (!contentType) {
 			if (["[object Object]", "[object Array]"].includes(Object.prototype.toString.call(data))) {
@@ -64,12 +126,60 @@ export default class RouteResponse<T = any> {
 		return new RouteResponse<T>({ response: data, contentType, type: "send" });
 	}
 
+	/**
+	 * Retorna uma resposta de erro com o código e a mensagem fornecidos
+	 * @param code O código de status do erro
+	 * @param message A mensagem do erro
+	 * @returns A resposta de erro
+	 * @example
+	 * RouteResponse.error(404, "Not Found");
+	 */
 	static error(code: keyof typeof codeStatus, message: string) {
 		return new RouteResponse<null>({ type: "status", code, message });
 	}
 
-	static status(code: keyof typeof codeStatus, message: string = "OK") {
-		return new RouteResponse<null>({ type: "status", code, message });
+	/**
+	 * Retorna uma resposta de status com o código e a mensagem fornecidos
+	 * @param code O código de status
+	 * @param message A mensagem do status
+	 * @returns A resposta de status
+	 * @example
+	 * RouteResponse.status(200, "OK").send({ message: "Hello, World!" });
+	 * RouteResponse.status(404, "Not Found").send("Hello, World!");
+	 * RouteResponse.status(200).json({ message: "Hello, World!" });
+	 */
+	static status(
+		code: keyof typeof codeStatus,
+		message: string = "OK",
+	): {
+		send: <T = any>(data: T, contentType?: string) => RouteResponse<T>;
+		json: <T extends Record<string, any> = { [k: string]: any }>(data: T) => RouteResponse<T>;
+		text: (data: string, contentType?: string) => RouteResponse<string>;
+		html: (data: string) => RouteResponse<string>;
+		buffer: (data: Buffer, contentType?: string) => RouteResponse<Buffer>;
+	} {
+		return {
+			send: (data, contentType) => {
+				const response = RouteResponse.send(data, contentType);
+				return new RouteResponse({ ...response, code, message });
+			},
+			json: (data) => {
+				const response = RouteResponse.json(data);
+				return new RouteResponse({ ...response, code, message });
+			},
+			text: (data, contentType) => {
+				const response = RouteResponse.text(data, contentType);
+				return new RouteResponse({ ...response, code, message });
+			},
+			html: (data) => {
+				const response = RouteResponse.html(data);
+				return new RouteResponse({ ...response, code, message });
+			},
+			buffer: (data, contentType) => {
+				const response = RouteResponse.buffer(data, contentType);
+				return new RouteResponse({ ...response, code, message });
+			},
+		};
 	}
 }
 

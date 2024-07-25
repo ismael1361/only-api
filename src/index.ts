@@ -7,6 +7,7 @@ import { logError, logTrace } from "./log";
 import { getCachedResponse, getUrlOrigin } from "./tools";
 import { RouteConfigContext, RoutePathContext, RouteRequestContext } from "./contexts";
 import express, { Request, Response } from "express";
+import { corsSync } from "./utils/Cors";
 
 export * from "./type";
 export * from "./tools";
@@ -31,6 +32,7 @@ class FlexRoute extends SimpleEventEmitter {
 				allowOrigin: "*",
 				maxPayloadSize: "100mb",
 				trustProxy: false,
+				middlewares: [],
 			},
 			options instanceof express ? ({} as any) : options,
 		);
@@ -109,35 +111,69 @@ class FlexRoute extends SimpleEventEmitter {
 			resolveReady();
 		});
 
-		this.app.get(
-			"/*",
-			cors({
-				origin: this.options.allowOrigin,
-			}),
-			this.options.cors ? cors(this.options.cors) : (req, res, next) => next(),
-			async (req, res) => {
-				const route = req.originalUrl;
-				const method: any = req.method;
+		const route: [string, ...any[]] = Array.prototype.concat.apply(
+			[] as any[],
+			[
+				"/*",
+				this.options.middlewares,
+				async (req: Request, res: Response) => {
+					try {
+						const allowed: Array<boolean> = [];
 
-				const response = await this.fetchRoute(
-					route,
-					{
-						method,
-						headers: req.headers as any,
-						params: req.params as any,
-						query: req.query as any,
-					},
-					req,
-					res,
-				);
+						allowed.push(
+							corsSync(
+								{
+									origin: this.options.allowOrigin,
+								},
+								req,
+								res,
+							),
+						);
 
-				try {
-					if (res && typeof res.status === "function" && !(res.finished || res.headersSent || res.destroyed)) {
-						res.status(response.code).json(response.response);
+						if (this.options.cors) {
+							allowed.push(corsSync(this.options.cors, req, res));
+						}
+
+						if (!allowed.includes(true)) {
+							throw new Error("Origin not allowed");
+						}
+					} catch {
+						if (res && typeof res.status === "function" && !(res.finished || res.headersSent || res.destroyed)) {
+							res.status(403).send("Origin not allowed");
+						}
+						return;
 					}
-				} catch {}
-			},
-		);
+
+					const route = req.originalUrl;
+					const method: any = req.method;
+
+					const response = await this.fetchRoute(
+						route,
+						{
+							method,
+							headers: req.headers as any,
+							params: req.params as any,
+							query: req.query as any,
+						},
+						req,
+						res,
+					);
+
+					try {
+						if (res && typeof res.status === "function" && !(res.finished || res.headersSent || res.destroyed)) {
+							res.setHeader("Content-Type", response.contentType);
+							res.status(response.code).send(response.response);
+						}
+					} catch {}
+				},
+			] as any[],
+		) as any;
+
+		this.app.all(...route);
+
+		this.app.all("*", (req, res) => {
+			res.status(404).send("Not found");
+		});
 
 		this.app.listen(this.options.port, this.options.host, () => {
 			logTrace("info", `Server started at http://${this.options.host}:${this.options.port}`, this.mainPath);
@@ -283,9 +319,6 @@ class FlexRoute extends SimpleEventEmitter {
 							...searchParams,
 						},
 						cache,
-						requiresAccess: async (users) => {
-							return true;
-						},
 					};
 
 					let response: RouteResponse | undefined;

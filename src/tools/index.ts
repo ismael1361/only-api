@@ -63,14 +63,15 @@ export const getCached = <T = any>(id: string = ""): T | undefined => {
  * Armazenar uma resposta em cache
  * @param id Um identificador único para a rota
  * @param value A resposta a ser armazenada
+ * @param duration A duração do cache em segundos, padrão 15 segundos
  */
-export const setCache = <T = any>(id: string, value: T): void => {
+export const setCache = <T = any>(id: string, value: T, duration: number = 15): void => {
 	if (id === "" || value instanceof RouteResponse) {
 		return;
 	}
 	const { original, parsed } = RoutePathContext.get();
 	const key = encodeURI(`${parsed}_${id}`);
-	cacheRoutes.set(key, value);
+	cacheRoutes.set(key, value, duration);
 };
 
 /**
