@@ -10,14 +10,14 @@ Para isso, o `only-api` utiliza um sistema de herança baseado em uma estrutura 
 
 ```
 routes/
-  users/
-    index.js
-    $id/
-      index.ts
-  posts/
-    index.js
-    [*]/
-      index.ts
+    users/
+        index.js
+        $id/
+            index.ts
+    posts/
+        index.js
+        [*]/
+            index.ts
 ```
 
 Neste exemplo, o diretório `users` contém um arquivo `index.js` que define a rota principal `/users`, enquanto o diretório `$id` contém um arquivo `index.ts` que define a rota `/users/:id`, o diretório `posts` contém um arquivo `index.js` que define a rota principal `/posts`, e o diretório `[*]` contém um arquivo `index.ts` que define a rota `/posts[*]`. Dessa forma, as rotas são organizadas de acordo com a estrutura de pastas, facilitando a navegação e a manutenção do código.
@@ -33,6 +33,8 @@ O `only-api` também oferece funcionalidades úteis para uso em rotas, como a ca
 - [only-api](#only-api)
   - [Instalação](#instalação)
   - [Uso](#uso)
+    - [`RouteResponse`](#routeresponse)
+    - [`RouteRequest`](#routerequest)
   - [Funções Especiais](#funções-especiais)
     - [`corsOringin`](#corsoringin)
     - [`requiresAccess`](#requiresaccess)
@@ -63,14 +65,14 @@ Para utilizar o `only-api`, basta importar o pacote para o seu projeto e inicial
 import flexRoute from 'only-api';
 
 const app = flexRoute("./routes", {
-  port: 3000,
-  host: "localhost",
-  middlewares: [
-    (req, res, next) => {
-      console.log("Middleware executado!");
-      next();
-    }
-  ]
+    port: 3000,
+    host: "localhost",
+    middlewares: [
+        (req, res, next) => {
+            console.log("Middleware executado!");
+            next();
+        }
+    ]
 });
 ```
 
@@ -93,7 +95,7 @@ Cada arquivo de rota deve exportar uma série de funções que definem o comport
 import { RouteResponse } from 'only-api';
 
 export const get = (req) => {
-  return RouteResponse.text("GET /users");
+    return RouteResponse.text("GET /users");
 };
 
 export const post = (req) => {
@@ -109,7 +111,9 @@ export const delete = (req) => {
 };
 ```
 
-Observe que cada função exportada deve corresponder a um método HTTP específico (por exemplo, `get`, `post`, `put`, `delete`, `all`) e retornar um objeto `RouteResponse` que define a resposta da rota. O objeto `RouteResponse` possui os seguintes métodos estáticos disponíveis:
+### `RouteResponse`
+
+No exemplo anterior, observe que cada função exportada deve corresponder a um método HTTP específico (por exemplo, `get`, `post`, `put`, `delete`, `all`) e retornar um objeto `RouteResponse` que define a resposta da rota. O objeto `RouteResponse` possui os seguintes métodos estáticos disponíveis:
 
 - `json` [*RouteResponse*]: retorna uma resposta JSON com o corpo fornecido
 - `text` [*RouteResponse*]: retorna uma resposta de texto com o corpo fornecido
@@ -127,12 +131,12 @@ Exemplos:
 import { RouteResponse } from 'only-api';
 
 export const get = (req) => {
-  return RouteResponse.json({ message: "GET /users" });
-  // return RouteResponse.send({ message: "GET /users" });
-  // return RouteResponse.send({ message: "GET /users" }, "application/json");
-  // return RouteResponse.error(404, "Not Found");
-  // return RouteResponse.status(200).json({ message: "GET /users" });
-  // return RouteResponse.status(200, "Ok").json({ message: "GET /users" });
+    return RouteResponse.json({ message: "GET /users" });
+    // return RouteResponse.send({ message: "GET /users" });
+    // return RouteResponse.send({ message: "GET /users" }, "application/json");
+    // return RouteResponse.error(404, "Not Found");
+    // return RouteResponse.status(200).json({ message: "GET /users" });
+    // return RouteResponse.status(200, "Ok").json({ message: "GET /users" });
 };
 
 export const post = (req) => {
@@ -154,6 +158,46 @@ export const delete = (req) => {
 ```
 
 O único retorno aceitável é um objeto `RouteResponse` ou uma `Promise` que resolve em um objeto `RouteResponse`. Qualquer outro tipo de retorno será tratado como um erro e resultará em uma resposta de erro com o código de status `500` e a mensagem de erro correspondente ou uma resposta da propriedade `send` em `RouteResponse` que seja capaz de resolver o retorno.
+
+Em algumas propriedades no `RouteResponse`, é possível passar um segundo parâmetro opcional que define o tipo de conteúdo da resposta. Por exemplo, `RouteResponse.text("GET /users", "text/plain")` define o tipo de conteúdo da resposta como `text/plain`. Ele pode ser uma string ou um objeto que define o tipo de conteúdo da resposta. Exemplos:
+
+```ts
+// routes/users/index.ts
+import { RouteResponse } from 'only-api';
+
+export const get = (req) => {
+    return RouteResponse.send("GET /users", "text/plain");
+};
+
+export const post = (req) => {
+    return RouteResponse.send("POST /users", {
+        type: "text/plain",
+        length: 10, 
+        attachment: true
+    });
+};
+
+export const put = (req) => {
+    return RouteResponse.send("<h1>PUT /users</h1>", { 
+        type: "text/plain", 
+        attachment: "file.txt", 
+        security: "no-referrer"
+    });
+};
+
+export const delete = (req) => {
+    return RouteResponse.send(Buffer.from("DELETE /users"), {
+        type: "text/plain", 
+        disposition: "attachment; filename=\"file.txt\"", 
+        security: { 
+            policy: "no-referrer", 
+            reportOnly: true
+        }
+    });
+};
+```
+
+### `RouteRequest`
 
 O Request passado para cada função é bastante limitado, isso pensando em segurança e simplicidade. Para acessar os dados do Request, basta acessar o primeiro parâmetro da função. Para acessar os dados do Response, basta retornar um objeto `RouteResponse`, como mostrado anteriormente. A estrutura do Request é a seguinte:
 
@@ -193,8 +237,8 @@ Exemplo:
 import { RouteRequest, RouteResponse } from 'only-api';
 
 export const get = (req: RouteRequest<{}, "id">) => {
-  const { id } = req.params;
-  return RouteResponse.json({ message: `GET /users/${id}` });
+    const { id } = req.params;
+    return RouteResponse.json({ message: `GET /users/${id}` });
 };
 ```
 
@@ -207,9 +251,9 @@ O `only-api` oferece algumas funções especiais que podem ser utilizadas para p
 import { RouteResponse, corsOringin } from 'only-api';
 
 export const get = (req) => {
-  corsOringin("http://example.com");
+    corsOringin("http://example.com");
 
-  return RouteResponse.json({ message: "GET /users" });
+    return RouteResponse.json({ message: "GET /users" });
 };
 ```
 
@@ -224,9 +268,9 @@ A função `corsOringin` permite definir o domínio permitido para acessar a rot
 import { RouteResponse, corsOringin } from 'only-api';
 
 export const get = (req) => {
-  corsOringin("http://example.com");
+    corsOringin("http://example.com");
 
-  return RouteResponse.json({ message: "GET /users" });
+    return RouteResponse.json({ message: "GET /users" });
 };
 ```
 
@@ -251,9 +295,9 @@ A função `requiresAccess` permite definir um middleware de autenticação para
 import { RouteResponse, requiresAccess } from 'only-api';
 
 export const get = (req) => {
-  requiresAccess({ admin: "12345" });
+    requiresAccess({ admin: "12345" });
 
-  return RouteResponse.json({ message: "GET /users" });
+    return RouteResponse.json({ message: "GET /users" });
 };
 ```
 
@@ -277,9 +321,9 @@ A função `getUrlOrigin` permite obter a origem da URL atual, respeitando o cur
 import { RouteResponse, getUrlOrigin } from 'only-api';
 
 export const get = (req) => {
-  const origin = getUrlOrigin(); // routes/users/admin
+    const origin = getUrlOrigin(); // routes/users/admin
 
-  return RouteResponse.json({ origin });
+    return RouteResponse.json({ origin });
 };
 ```
 
@@ -302,9 +346,9 @@ A função `cacheControl` permite personalizar o armazenamento em cache da respo
 import { RouteResponse, cacheControl } from 'only-api';
 
 export const get = (req) => {
-  cacheControl(15);
+    cacheControl(15);
 
-  return RouteResponse.json({ message: "GET /users" });
+    return RouteResponse.json({ message: "GET /users" });
 };
 ```
 
@@ -329,11 +373,11 @@ A função `getCached` permite obter a resposta armazenada em cache da rota atua
 import { RouteResponse, getCached } from 'only-api';
 
 export const get = (req) => {
-  const cached = getCached();
+    const cached = getCached();
 
-  if (cached) return RouteResponse.json(cached);
+    if (cached) return RouteResponse.json(cached);
 
-  return RouteResponse.json({ message: "GET /users" });
+    return RouteResponse.json({ message: "GET /users" });
 };
 ```
 
@@ -357,13 +401,13 @@ A função `setCache` permite armazenar, de forma personalizada, um valor em cac
 import { RouteResponse, setCache, getCached } from 'only-api';
 
 export const get = (req) => {
-  const cached = getCached("message");
+    const cached = getCached("message");
 
-  if (cached) RouteResponse.json({ message: cached });
+    if (cached) RouteResponse.json({ message: cached });
 
-  setCache("message", "GET /users");
+    setCache("message", "GET /users");
 
-  return RouteResponse.json({ message: getCached("message") });
+    return RouteResponse.json({ message: getCached("message") });
 };
 ```
 

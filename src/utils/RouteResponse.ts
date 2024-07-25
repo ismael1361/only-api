@@ -1,3 +1,5 @@
+import { Readable } from "stream";
+
 interface RouteResponseOptions<T = any> {
 	response: T | null;
 	type: "json" | "text" | "send" | "status" | "buffer" | "stream";
@@ -5,14 +7,27 @@ interface RouteResponseOptions<T = any> {
 	message: string;
 	timeStart: number;
 	timeEnd: number;
-	contentType: string;
+	content: Partial<ContentInfo>;
 }
 
 type StreamCallback = (start: number, end: number) => string | Buffer | null;
 
+interface ContentInfo {
+	type: string;
+	length?: number;
+	disposition?: string;
+	attachment?: boolean | string;
+	security?:
+		| Partial<{
+				policy: string;
+				reportOnly: boolean | string;
+		  }>
+		| string;
+}
+
 export default class RouteResponse<T = any> {
 	readonly response: RouteResponseOptions<T>["response"];
-	readonly contentType: RouteResponseOptions<T>["contentType"];
+	readonly content: ContentInfo;
 	readonly type: RouteResponseOptions<T>["type"];
 	readonly code: RouteResponseOptions<T>["code"] = 200;
 	readonly status: CodeStatus;
@@ -25,10 +40,13 @@ export default class RouteResponse<T = any> {
 	};
 
 	constructor(options: Partial<RouteResponseOptions<T>> = {}) {
-		const { response = null, contentType, type = "status", code = 200, message = "Ok", timeStart = Date.now(), timeEnd = Date.now() } = options;
+		const { response = null, content, type = "status", code = 200, message = "Ok", timeStart = Date.now(), timeEnd = Date.now() } = options;
 
 		this.response = response ?? null;
-		this.contentType = contentType ? contentType : type === "json" ? "application/json" : type === "text" ? "text/plain" : "application/octet-stream";
+		this.content = {
+			type: type === "json" ? "application/json" : type === "text" ? "text/plain" : "application/octet-stream",
+			...content,
+		};
 		this.type = type;
 		this.code = code;
 		this.message = message;
@@ -49,7 +67,7 @@ export default class RouteResponse<T = any> {
 	 * RouteResponse.json({ message: "Hello, World!" });
 	 */
 	static json<T extends Record<string, any> = { [k: string]: any }>(data: T) {
-		return new RouteResponse<T>({ response: data, type: "json", contentType: "application/json" });
+		return new RouteResponse<T>({ response: data, type: "json", content: { type: "application/json" } });
 	}
 
 	/**
@@ -61,8 +79,15 @@ export default class RouteResponse<T = any> {
 	 * RouteResponse.text("Hello, World!");
 	 * RouteResponse.text("Hello, World!", "text/html");
 	 */
-	static text(data: string, contentType: string = "text/plain") {
-		return new RouteResponse<string>({ response: data, type: "text", contentType });
+	static text(data: string, content: string | ContentInfo = "text/plain") {
+		const c: ContentInfo =
+			typeof content === "string"
+				? {
+						type: content,
+						length: data.length,
+				  }
+				: content;
+		return new RouteResponse<string>({ response: data, type: "text", content: c });
 	}
 
 	/**
@@ -85,8 +110,15 @@ export default class RouteResponse<T = any> {
 	 * RouteResponse.buffer(Buffer.from("Hello, World!"));
 	 * RouteResponse.buffer(Buffer.from("Hello, World!"), "text/plain");
 	 */
-	static buffer(data: Buffer, contentType: string = "application/octet-stream") {
-		return new RouteResponse<Buffer>({ response: data, type: "buffer", contentType });
+	static buffer(data: Buffer, content: string | ContentInfo = "application/octet-stream") {
+		const c: ContentInfo =
+			typeof content === "string"
+				? {
+						type: content,
+						length: data.length,
+				  }
+				: content;
+		return new RouteResponse<Buffer>({ response: data, type: "buffer", content: c });
 	}
 
 	/**
@@ -99,8 +131,29 @@ export default class RouteResponse<T = any> {
 	 * RouteResponse.stream(fs.createReadStream("file.txt"), "text/plain");
 	 * RouteResponse.stream((start, end) => chunk.slice(start, end));
 	 */
-	static stream(stream: NodeJS.ReadableStream | StreamCallback, contentType: string = "application/octet-stream") {
-		return new RouteResponse<typeof stream>({ response: stream, type: "stream", contentType });
+	static stream(stream: NodeJS.ReadableStream | StreamCallback, content: string | ContentInfo = "application/octet-stream") {
+		let start = 0;
+		const response =
+			stream instanceof Function
+				? new Readable({
+						read(size) {
+							const chunk = stream(start, start + size);
+							if (chunk) {
+								start += chunk.length;
+								this.push(chunk);
+							} else {
+								this.push(null);
+							}
+						},
+				  })
+				: stream;
+		const c: ContentInfo =
+			typeof content === "string"
+				? {
+						type: content,
+				  }
+				: content;
+		return new RouteResponse<NodeJS.ReadableStream>({ response, type: "stream", content: c });
 	}
 
 	/**
@@ -113,17 +166,24 @@ export default class RouteResponse<T = any> {
 	 * RouteResponse.send("Hello, World!");
 	 * RouteResponse.send(Buffer.from("Hello, World!"));
 	 */
-	static send<T = any>(data: T, contentType?: string) {
-		if (!contentType) {
+	static send<T = any>(data: T, content?: string | ContentInfo) {
+		if (!content) {
 			if (["[object Object]", "[object Array]"].includes(Object.prototype.toString.call(data))) {
-				contentType = "application/json";
+				content = "application/json";
 			} else if (typeof data === "string") {
-				contentType = "text/plain";
+				content = "text/plain";
 			} else {
-				contentType = "application/octet-stream";
+				content = "application/octet-stream";
 			}
 		}
-		return new RouteResponse<T>({ response: data, contentType, type: "send" });
+		const c: ContentInfo =
+			typeof content === "string"
+				? {
+						type: content,
+						length: (data as any)?.length,
+				  }
+				: content;
+		return new RouteResponse<T>({ response: data, content: c, type: "send" });
 	}
 
 	/**
@@ -152,31 +212,31 @@ export default class RouteResponse<T = any> {
 		code: keyof typeof codeStatus,
 		message: string = "OK",
 	): {
-		send: <T = any>(data: T, contentType?: string) => RouteResponse<T>;
+		send: <T = any>(data: T, content?: string | ContentInfo) => RouteResponse<T>;
 		json: <T extends Record<string, any> = { [k: string]: any }>(data: T) => RouteResponse<T>;
-		text: (data: string, contentType?: string) => RouteResponse<string>;
+		text: (data: string, content?: string | ContentInfo) => RouteResponse<string>;
 		html: (data: string) => RouteResponse<string>;
-		buffer: (data: Buffer, contentType?: string) => RouteResponse<Buffer>;
+		buffer: (data: Buffer, content?: string | ContentInfo) => RouteResponse<Buffer>;
 	} {
 		return {
-			send: (data, contentType) => {
-				const response = RouteResponse.send(data, contentType);
+			send: (data, content) => {
+				const response = RouteResponse.send(data, content);
 				return new RouteResponse({ ...response, code, message });
 			},
 			json: (data) => {
 				const response = RouteResponse.json(data);
 				return new RouteResponse({ ...response, code, message });
 			},
-			text: (data, contentType) => {
-				const response = RouteResponse.text(data, contentType);
+			text: (data, content) => {
+				const response = RouteResponse.text(data, content);
 				return new RouteResponse({ ...response, code, message });
 			},
 			html: (data) => {
 				const response = RouteResponse.html(data);
 				return new RouteResponse({ ...response, code, message });
 			},
-			buffer: (data, contentType) => {
-				const response = RouteResponse.buffer(data, contentType);
+			buffer: (data, content) => {
+				const response = RouteResponse.buffer(data, content);
 				return new RouteResponse({ ...response, code, message });
 			},
 		};

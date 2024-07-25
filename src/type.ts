@@ -61,7 +61,6 @@ export type HeadersProps =
 	| "content-length"
 	| "content-security-policy"
 	| "content-security-policy-report-only"
-	| "content-type"
 	| "cookie"
 	| "dnt"
 	| "date"
