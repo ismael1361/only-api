@@ -17,7 +17,7 @@ const cacheRoutes = new SimpleCache();
  * Armazenar em cache a resposta de uma rota
  * @param duration A duração do cache em segundos
  * @param id Um identificador único para a rota
- * @returns A resposta armazenada em cache
+ * @throws Se a rota já estiver armazenada em cache; expressão regular "__cache_control_response__{id}"
  */
 export const cacheControl = (duration: number, id: string = ""): void => {
 	duration = typeof duration === "number" ? duration : 15;
