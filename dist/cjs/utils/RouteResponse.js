@@ -2,11 +2,20 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const stream_1 = require("stream");
 class RouteResponse {
+    response;
+    content;
+    type;
+    code = 200;
+    status;
+    message;
+    requisitionTime;
     constructor(options = {}) {
-        this.code = 200;
         const { response = null, content, type = "status", code = 200, message = "Ok", timeStart = Date.now(), timeEnd = Date.now() } = options;
-        this.response = response !== null && response !== void 0 ? response : null;
-        this.content = Object.assign({ type: type === "json" ? "application/json" : type === "text" ? "text/plain" : "application/octet-stream" }, content);
+        this.response = response ?? null;
+        this.content = {
+            type: type === "json" ? "application/json" : type === "text" ? "text/plain" : "application/octet-stream",
+            ...content,
+        };
         this.type = type;
         this.code = code;
         this.message = message;
@@ -131,7 +140,7 @@ class RouteResponse {
         const c = typeof content === "string"
             ? {
                 type: content,
-                length: data === null || data === void 0 ? void 0 : data.length,
+                length: data?.length,
             }
             : content;
         return new RouteResponse({ response: data, content: c, type: "send" });
@@ -161,23 +170,23 @@ class RouteResponse {
         return {
             send: (data, content) => {
                 const response = RouteResponse.send(data, content);
-                return new RouteResponse(Object.assign(Object.assign({}, response), { code, message }));
+                return new RouteResponse({ ...response, code, message });
             },
             json: (data) => {
                 const response = RouteResponse.json(data);
-                return new RouteResponse(Object.assign(Object.assign({}, response), { code, message }));
+                return new RouteResponse({ ...response, code, message });
             },
             text: (data, content) => {
                 const response = RouteResponse.text(data, content);
-                return new RouteResponse(Object.assign(Object.assign({}, response), { code, message }));
+                return new RouteResponse({ ...response, code, message });
             },
             html: (data) => {
                 const response = RouteResponse.html(data);
-                return new RouteResponse(Object.assign(Object.assign({}, response), { code, message }));
+                return new RouteResponse({ ...response, code, message });
             },
             buffer: (data, content) => {
                 const response = RouteResponse.buffer(data, content);
-                return new RouteResponse(Object.assign(Object.assign({}, response), { code, message }));
+                return new RouteResponse({ ...response, code, message });
             },
         };
     }

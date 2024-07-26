@@ -1,5 +1,7 @@
+import path from "path";
 import { ParsedUrl } from "../type";
 import PathInfo from "./PathInfo";
+import { platform } from "os";
 
 export const joinObject = <T extends Record<string, any>>(obj: T, partial: Partial<T>): T => {
 	const newObj: T = { ...obj };
@@ -186,4 +188,21 @@ export const getCorsHeaders = (allowedOrigins: string | string[], currentOrigin?
 	}
 
 	return options;
+};
+
+export const dirName = () => {
+	try {
+		throw new Error();
+	} catch (e) {
+		const initiator = (e as any).stack.split("\n").slice(2, 3)[0];
+		let p = /(?<path>[^\(\s]+):[0-9]+:[0-9]+/.exec(initiator)?.groups?.path ?? "";
+		if (p.indexOf("file") >= 0) {
+			p = new URL(p).pathname;
+		}
+		let dirname = path.dirname(p);
+		if (dirname[0] === "/" && platform() === "win32") {
+			dirname = dirname.slice(1);
+		}
+		return dirname;
+	}
 };

@@ -1,12 +1,10 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-const Utils_1 = require("./Utils.js");
+import { cloneObject } from "./Utils.js";
 const calculateExpiryTime = (expirySeconds) => (expirySeconds > 0 ? Date.now() + expirySeconds * 1000 : Infinity);
 /**
  * Implementação simples de cache que mantém valores imutáveis na memória por um tempo limitado.
  * A imutabilidade é garantida clonando os valores armazenados e recuperados. Para alterar um valor em cache, ele terá que ser `set` novamente com o novo valor.
  */
-class SimpleCache {
+export default class SimpleCache {
     options = {
         cloneValues: true,
         expirySeconds: 15,
@@ -64,7 +62,7 @@ class SimpleCache {
             entry.expires = calculateExpiryTime(this.options.expirySeconds);
             entry.accessed = Date.now();
         }
-        return this.options.cloneValues ? (0, Utils_1.cloneObject)(entry.value) : entry.value;
+        return this.options.cloneValues ? cloneObject(entry.value) : entry.value;
     }
     set(key, value, expirySeconds) {
         if (typeof this.options.maxEntries === "number" && this.options.maxEntries > 0 && this.cache.size >= this.options.maxEntries && !this.cache.has(key)) {
@@ -88,7 +86,7 @@ class SimpleCache {
             }
         }
         this.cache.set(key, {
-            value: this.options.cloneValues ? (0, Utils_1.cloneObject)(value) : value,
+            value: this.options.cloneValues ? cloneObject(value) : value,
             added: Date.now(),
             accessed: Date.now(),
             expires: calculateExpiryTime(expirySeconds ?? this.options.expirySeconds),
@@ -117,5 +115,4 @@ class SimpleCache {
         });
     }
 }
-exports.default = SimpleCache;
 //# sourceMappingURL=SimpleCache.js.map

@@ -1,0 +1,23 @@
+{
+	"type": "module",
+	"name": "test",
+	"version": "0.0.1",
+	"description": "",
+	"main": "index.js",
+	"scripts": {
+		"start": "node --loader ts-node/esm ./index.ts"
+	},
+	"devDependencies": {
+		"@types/node": "^20.14.10",
+		"esm": "^3.2.25",
+		"ts-node": "^10.9.2",
+		"tsx": "^4.16.2",
+		"typescript": "^5.5.3"
+	},
+	"dependencies": {
+		"only-api": "^0.1.51"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "ISC"
+}

@@ -1,4 +1,4 @@
-import { RouteResponse, getUrlOrigin } from "src";
+import { RouteResponse, getUrlOrigin } from "only-api";
 
 export const get = (req) => {
 	console.log("path:", getUrlOrigin());

@@ -1,39 +1,21 @@
-"use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __exportStar = (this && this.__exportStar) || function(m, exports) {
-    for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
-};
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.RouteResponse = exports.fetchRoute = void 0;
-const path_1 = __importDefault(require("path"));
-const utils_1 = require("./utils/index.js");
-Object.defineProperty(exports, "RouteResponse", { enumerable: true, get: function () { return utils_1.RouteResponse; } });
-const chokidar_1 = __importDefault(require("chokidar"));
-const tsUtils_1 = require("./tsUtils.js");
-const log_1 = require("./log.js");
-const tools_1 = require("./tools/index.js");
-const contexts_1 = require("./contexts.js");
-const express_1 = __importDefault(require("express"));
-const Cors_1 = require("./utils/Cors.js");
-__exportStar(require("./type.js"), exports);
-__exportStar(require("./tools/index.js"), exports);
-class OnlyApi extends utils_1.SimpleEventEmitter {
+import path from "path";
+import { PathInfo, SimpleCache, SimpleEventEmitter, RouteResponse, parseUrl, resolvePath, joinObject, dirName } from "./utils/index.js";
+import chokidar from "chokidar";
+import { importModule } from "./tsUtils.js";
+import { logError, logTrace } from "./log.js";
+import { getCachedResponse, getUrlOrigin } from "./tools/index.js";
+import { RouteConfigContext, RoutePathContext, RouteRequestContext } from "./contexts.js";
+import express from "express";
+import { corsSync } from "./utils/Cors.js";
+import multer from "multer";
+import { platform } from "os";
+export * from "./type.js";
+export * from "./tools/index.js";
+const localDir = dirName();
+class OnlyApi extends SimpleEventEmitter {
     routePath;
     _ready = false;
-    mainPath = `${process.platform === 'win32' ? '' : '/'}${/file:\/{2,3}(.+)\/[^/]/.exec(import.meta.url)[1]}`;
+    mainPath = localDir;
     pathSearchRoutes = "";
     _routes = {};
     _routesPath = [];
@@ -43,29 +25,40 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
     constructor(routePath, options = {}) {
         super();
         this.routePath = routePath;
-        this.options = (0, utils_1.joinObject)({
+        this.options = joinObject({
             host: "localhost",
             port: 3000,
             allowOrigin: "*",
             maxPayloadSize: "100mb",
             trustProxy: false,
             middlewares: [],
-        }, options instanceof express_1.default ? {} : options);
-        this.app = options instanceof express_1.default ? options : (0, express_1.default)();
-        const stack = (new Error().stack ?? "").split("\n");
-        const frames = stack.map((frame) => {
+        }, options instanceof express ? {} : options);
+        this.app = options instanceof express ? options : express();
+        const dirnames = (new Error().stack ?? "")
+            .split("\n")
+            .map((frame) => {
             frame = frame.trim();
-            const match = frame.match(/^at (.+) \((.+)(:(\d+):(\d+))\)$/i);
-            return match ? [match[1], match[2]] : frame;
-        });
-        for (let i = 1; i < frames.length; i++) {
-            const currentFrame = frames[i];
-            if (path_1.default.dirname(currentFrame[1]) !== `${process.platform === 'win32' ? '' : '/'}${/file:\/{2,3}(.+)\/[^/]/.exec(import.meta.url)[1]}`) {
-                this.mainPath = path_1.default.resolve(path_1.default.dirname(currentFrame[1]), routePath);
-                break;
+            let p = /(?<path>[^\(\s]+):[0-9]+:[0-9]+/.exec(frame)?.groups?.path ?? "";
+            if (p.indexOf("file") >= 0) {
+                p = new URL(p).pathname;
             }
-        }
-        this.pathSearchRoutes = path_1.default.join(this.mainPath, "./**/index.{js,ts}").replace(/\\/g, "/");
+            let dirname = path.dirname(p);
+            if (dirname[0] === "/" && platform() === "win32") {
+                dirname = dirname.slice(1);
+            }
+            return dirname;
+        })
+            .filter((dirname) => {
+            return (dirname &&
+                dirname.trim() !== "" &&
+                dirname.trim() !== "." &&
+                !dirname.split(/[\\\/]/gi).includes("internal") &&
+                !dirname.split(/[\\\/]/gi).includes("node_modules") &&
+                dirname.search(localDir) < 0 &&
+                dirname.search(localDir.replace(/\\/gi, "/")) < 0);
+        });
+        this.mainPath = path.resolve(dirnames[0], routePath);
+        this.pathSearchRoutes = path.join(this.mainPath, "./**/index.{js,ts}").replace(/\\/g, "/");
         this.on("ready", () => {
             this._ready = true;
         });
@@ -96,7 +89,7 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
                     resolved = true;
                 }, 1000);
             };
-            chokidar_1.default
+            chokidar
                 .watch(this.pathSearchRoutes)
                 .on("add", (file) => {
                 this.addRoute(file);
@@ -112,17 +105,21 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
             });
             resolveReady();
         });
+        const storage = multer.memoryStorage();
+        const upload = multer({ storage });
+        this.app.use(upload.array("files", Infinity));
+        this.app.use(express.json());
         const route = Array.prototype.concat.apply([], [
             "/*",
             this.options.middlewares,
             async (req, res) => {
                 try {
                     const allowed = [];
-                    allowed.push((0, Cors_1.corsSync)({
+                    allowed.push(corsSync({
                         origin: this.options.allowOrigin,
                     }, req, res));
                     if (this.options.cors) {
-                        allowed.push((0, Cors_1.corsSync)(this.options.cors, req, res));
+                        allowed.push(corsSync(this.options.cors, req, res));
                     }
                     if (!allowed.includes(true)) {
                         throw new Error("Origin not allowed");
@@ -141,6 +138,7 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
                     headers: req.headers,
                     params: req.params,
                     query: req.query,
+                    body: req.body,
                 }, req, res);
                 try {
                     if (res.finished || res.headersSent || res.destroyed) {
@@ -192,31 +190,40 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
                 catch { }
             },
         ]);
+        this.app.get("/routes", (req, res) => {
+            res.json(this._routesPath);
+        });
         this.app.all(...route);
         this.app.all("*", (req, res) => {
             res.status(404).send("Not found");
         });
         this.app.listen(this.options.port, this.options.host, () => {
-            (0, log_1.logTrace)("info", `Server started at http://${this.options.host}:${this.options.port}`, this.mainPath);
+            logTrace("info", `Server started at http://${this.options.host}:${this.options.port}`, this.mainPath);
             this.emit("ready");
         });
     }
     async addRoute(routePath) {
-        const p = routePath.replace(/\\/g, "/").replace(this.mainPath.replace(/\\/g, "/"), "").replace("/index.ts", "").replace("/index.js", "");
-        const exports = await (0, tsUtils_1.importModule)(routePath, true, () => {
+        const p = routePath
+            .replace(/\\/g, "/")
+            .replace(this.mainPath.replace(/\\/g, "/"), "")
+            .replace("/index.ts", "")
+            .replace("/index.js", "")
+            .replace(/(\/{1,})\[/gi, "[");
+        const exports = await importModule(routePath, true, () => {
             this.addRoute(routePath);
         });
+        console.log(exports);
         if (this._routesCache.has(p)) {
             this._routesCache.get(p)?.applyOptions(exports.cacheOptions);
         }
         else {
-            this._routesCache.set(p, new utils_1.SimpleCache(exports.cacheOptions));
+            this._routesCache.set(p, new SimpleCache(exports.cacheOptions));
         }
         if (p in this._routes) {
-            (0, log_1.logTrace)("info", `Rota "${p}" foi alterado!`, routePath);
+            logTrace("info", `Rota "${p}" foi alterado!`, routePath);
         }
         else {
-            (0, log_1.logTrace)("info", `Rota "${p}" foi adicionado!`, routePath);
+            logTrace("info", `Rota "${p}" foi adicionado!`, routePath);
         }
         this._routes[p] = exports;
         this._routesPath = Object.keys(this._routes);
@@ -229,7 +236,7 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
         delete this._routes[path];
         this._routesPath = Object.keys(this._routes);
         this._routesCache.delete(path);
-        (0, log_1.logTrace)("warn", `Rota "${path}" foi removido!`, routePath);
+        logTrace("warn", `Rota "${path}" foi removido!`, routePath);
     }
     async fetchRoute(route, options = {
         method: "GET",
@@ -237,16 +244,18 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
         body: {},
         params: {},
         query: {},
+        files: [],
+        file: undefined,
     }, request, response) {
         const initialyTime = Date.now();
         try {
             await new Promise((resolve) => setTimeout(resolve, 0));
-            const localPath = (0, tools_1.getUrlOrigin)();
-            const { pathname: pn, searchParams } = (0, utils_1.parseUrl)(route);
-            const pathname = (0, utils_1.resolvePath)(localPath, pn);
+            const localPath = getUrlOrigin();
+            const { pathname: pn, searchParams } = parseUrl(route);
+            const pathname = resolvePath(localPath, pn);
             const routePath = pathname.replace(/^\//gi, "").replace(/\/$/gi, "");
             const findRoute = this._routesPath.find((path) => {
-                return utils_1.PathInfo.get(path).equals(routePath);
+                return PathInfo.get(path).equals(routePath);
             });
             if (!findRoute) {
                 throw new Error(`"/${routePath}": Route not found!`);
@@ -267,11 +276,29 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
             if (!methodBy || typeof moduleRoute[methodBy] !== "function") {
                 throw new Error(`"/${routePath}": Method not allowed!`);
             }
-            const prevConfig = contexts_1.RouteConfigContext.get();
+            const prevConfig = RouteConfigContext.get();
             const res = response ?? prevConfig.res;
             const req = request ?? prevConfig.req;
+            const files = (options && Array.isArray(options.files) ? options.files : req && Array.isArray(req.files) ? req.files : [])
+                .filter((b) => b instanceof Buffer || (typeof b === "object" && "buffer" in b))
+                .map((b) => {
+                return b instanceof Buffer
+                    ? {
+                        fieldname: "file",
+                        originalname: "file",
+                        encoding: "7bit",
+                        mimetype: "application/octet-stream",
+                        size: b.length,
+                        stream: undefined,
+                        destination: "",
+                        filename: "file",
+                        path: "",
+                        buffer: b,
+                    }
+                    : b;
+            });
             const getParams = () => {
-                const { length, ...params } = utils_1.PathInfo.extractVariables(findRoute, routePath);
+                const { length, ...params } = PathInfo.extractVariables(findRoute, routePath);
                 return Object.entries(params).reduce((acc, [key, value]) => {
                     acc[key] = decodeURIComponent(value.toString());
                     return acc;
@@ -290,10 +317,10 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
                     // if (cached) {
                     // 	return Promise.resolve(cached);
                     // }
-                    const valueContext = contexts_1.RouteRequestContext.get();
+                    const valueContext = RouteRequestContext.get();
                     const middleware = ("middleware" in moduleRoute ? (Array.isArray(moduleRoute.middleware) ? moduleRoute.middleware : [moduleRoute.middleware]) : []).filter((fn) => typeof fn === "function");
                     const callbacks = middleware.concat((Array.isArray(moduleRoute[methodBy]) ? moduleRoute[methodBy] : [moduleRoute[methodBy]]));
-                    const cache = this._routesCache.get(findRoute) ?? new utils_1.SimpleCache();
+                    const cache = this._routesCache.get(findRoute) ?? new SimpleCache();
                     const req = {
                         method: options.method?.toUpperCase() ?? "GET",
                         headers: { ...parseHeaders(valueContext.headers), ...parseHeaders(options.headers ?? {}) },
@@ -305,6 +332,8 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
                             ...searchParams,
                         },
                         cache,
+                        files,
+                        file: options.file instanceof Buffer ? options.file : files.length > 0 ? files[0] : undefined,
                     };
                     let response;
                     for (let i = 0; i < callbacks.length; i++) {
@@ -318,10 +347,10 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
                         }
                         await new Promise((resolve) => setTimeout(resolve, 0));
                     }
-                    if (!(response instanceof utils_1.RouteResponse)) {
-                        return Promise.resolve(utils_1.RouteResponse.send(response));
+                    if (!(response instanceof RouteResponse)) {
+                        return Promise.resolve(RouteResponse.send(response));
                     }
-                    const fnCache = contexts_1.RouteConfigContext.value.cacheRoute;
+                    const fnCache = RouteConfigContext.value.cacheRoute;
                     if (typeof fnCache === "function" && [400, 404].includes(response.code)) {
                         fnCache(response);
                     }
@@ -329,12 +358,12 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
                 }
                 catch (e) {
                     const [_, idCache] = String(e).split("__cache_control_response__");
-                    const cached = (0, tools_1.getCachedResponse)(idCache);
+                    const cached = getCachedResponse(idCache);
                     if (cached) {
                         return Promise.resolve(cached);
                     }
-                    (0, log_1.logError)(e);
-                    return new utils_1.RouteResponse({
+                    logError(e);
+                    return new RouteResponse({
                         code: 500,
                         message: String(e).replace(/(Error\:\s?)+/gi, "Error: "),
                         timeStart: initialyTime,
@@ -342,7 +371,7 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
                     });
                 }
             };
-            const result = await contexts_1.RouteRequestContext.provider(contexts_1.RoutePathContext.provider(contexts_1.RouteConfigContext.provider(fn, {
+            const result = await RouteRequestContext.provider(RoutePathContext.provider(RouteConfigContext.provider(fn, {
                 res,
                 req,
             }), {
@@ -357,8 +386,10 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
                     ...(options.query ?? {}),
                     ...searchParams,
                 },
+                files,
+                file: options.file instanceof Buffer ? options.file : files.length > 0 ? files[0] : undefined,
             })();
-            return new utils_1.RouteResponse({
+            return new RouteResponse({
                 response: result.response,
                 content: result.content,
                 type: result.type,
@@ -370,7 +401,7 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
         }
         catch (e) {
             // logError(e as any);
-            return new utils_1.RouteResponse({
+            return new RouteResponse({
                 code: 500,
                 message: String(e).replace(/(Error\:\s?)+/gi, "Error: "),
                 timeStart: initialyTime,
@@ -384,13 +415,13 @@ function onlyApi(routePath, options = {}) {
     rootOnlyApi = new OnlyApi(routePath, options);
     return rootOnlyApi;
 }
-const fetchRoute = async (route, options = {}) => {
+export const fetchRoute = async (route, options = {}) => {
     if (!rootOnlyApi) {
         throw new Error("OnlyApi not initialized!");
     }
     await rootOnlyApi.ready();
     return await rootOnlyApi.fetchRoute(route, options);
 };
-exports.fetchRoute = fetchRoute;
-exports.default = onlyApi;
+export { RouteResponse };
+export default onlyApi;
 //# sourceMappingURL=index.js.map

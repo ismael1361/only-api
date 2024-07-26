@@ -1,12 +1,7 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.getCorsHeaders = exports.getCorsOptions = exports.resolvePath = exports.parseUrl = exports.PartialArray = exports.joinObject = void 0;
-exports.cloneObject = cloneObject;
-const PathInfo_1 = __importDefault(require("./PathInfo.js"));
-const joinObject = (obj, partial) => {
+import path from "path";
+import PathInfo from "./PathInfo.js";
+import { platform } from "os";
+export const joinObject = (obj, partial) => {
     const newObj = { ...obj };
     for (const key in partial) {
         if (partial.hasOwnProperty(key)) {
@@ -15,8 +10,7 @@ const joinObject = (obj, partial) => {
     }
     return newObj;
 };
-exports.joinObject = joinObject;
-class PartialArray {
+export class PartialArray {
     constructor(sparseArray) {
         if (sparseArray instanceof Array) {
             for (let i = 0; i < sparseArray.length; i++) {
@@ -30,8 +24,7 @@ class PartialArray {
         }
     }
 }
-exports.PartialArray = PartialArray;
-function cloneObject(original, stack = []) {
+export function cloneObject(original, stack = []) {
     const checkAndFixTypedArray = (obj) => {
         if (obj !== null &&
             typeof obj === "object" &&
@@ -80,7 +73,7 @@ function cloneObject(original, stack = []) {
     });
     return clone;
 }
-const parseUrl = (urlString) => {
+export const parseUrl = (urlString) => {
     const urlPattern = /^([^?#]*)(\?[^#]*)?(#.*)?$/;
     const matches = urlString.match(urlPattern);
     if (!matches) {
@@ -104,10 +97,9 @@ const parseUrl = (urlString) => {
         hash: hash || "",
     };
 };
-exports.parseUrl = parseUrl;
-const resolvePath = (from, to) => {
+export const resolvePath = (from, to) => {
     const normalize = (path) => {
-        const keys = PathInfo_1.default.get(path).keys.reduce((acc, key, index) => {
+        const keys = PathInfo.get(path).keys.reduce((acc, key, index) => {
             if (index === 0) {
                 acc.push(key);
             }
@@ -119,7 +111,7 @@ const resolvePath = (from, to) => {
             }
             return acc;
         }, []);
-        return PathInfo_1.default.get(keys).path;
+        return PathInfo.get(keys).path;
     };
     if (!to.startsWith(".") && !to.startsWith("..") && to.startsWith("/")) {
         return normalize(to);
@@ -127,9 +119,9 @@ const resolvePath = (from, to) => {
     from = normalize(from);
     to = normalize(to);
     if (!to.startsWith(".") && !to.startsWith("..")) {
-        return PathInfo_1.default.get([from, to]).path;
+        return PathInfo.get([from, to]).path;
     }
-    const keys = PathInfo_1.default.get(to).keys.reduce((acc, key) => {
+    const keys = PathInfo.get(to).keys.reduce((acc, key) => {
         if (key === "..") {
             acc.pop();
         }
@@ -137,31 +129,29 @@ const resolvePath = (from, to) => {
             acc.push(key);
         }
         return acc;
-    }, PathInfo_1.default.get(from).keys);
-    return PathInfo_1.default.get(keys).path;
+    }, PathInfo.get(from).keys);
+    return PathInfo.get(keys).path;
 };
-exports.resolvePath = resolvePath;
 /**
  * Obtém opções de CORS compatíveis com o pacote 'cors' (usado pelo Socket.IO 3+)
  * @param allowedOrigins Origens permitidas
  * @returns Opções de CORS
  */
-const getCorsOptions = (allowedOrigins) => {
+export const getCorsOptions = (allowedOrigins) => {
     return {
         origin: allowedOrigins === "*" ? true : allowedOrigins === "" ? false : allowedOrigins.split(/,\s*/),
         methods: "GET,PUT,POST,DELETE,OPTIONS",
         allowedHeaders: "Content-Type, Authorization, Content-Length, Accept, Origin, X-Requested-With, DataBase-Context", // Cabeçalhos permitidos
     };
 };
-exports.getCorsOptions = getCorsOptions;
 /**
  * Obtém cabeçalhos CORS que podem ser enviados em solicitações de preflight (OPTIONS)
  * @param allowedOrigins Origem(s) permitida(s) configurada(s). Exemplos: `'https://meu.servidor.com'` para uma origem permitida específica, `'*'` para qualquer origem (retorna a origem atual), `''` para desativar o CORS (permitindo apenas localhost), ou `'http://servidor1.com,https://servidor1.com,https://servidor2.com'` para várias origens permitidas
  * @param currentOrigin Origem atual dos cabeçalhos da solicitação
  * @returns
  */
-const getCorsHeaders = (allowedOrigins, currentOrigin, exposeHeaders) => {
-    const corsOptions = (0, exports.getCorsOptions)(Array.isArray(allowedOrigins) ? allowedOrigins.join(",") : allowedOrigins);
+export const getCorsHeaders = (allowedOrigins, currentOrigin, exposeHeaders) => {
+    const corsOptions = getCorsOptions(Array.isArray(allowedOrigins) ? allowedOrigins.join(",") : allowedOrigins);
     const origins = typeof corsOptions.origin === "boolean" ? (corsOptions.origin ? currentOrigin ?? "*" : "") : corsOptions.origin instanceof Array ? corsOptions.origin.join(",") : corsOptions.origin;
     const options = {
         "Access-Control-Allow-Origin": origins,
@@ -173,5 +163,21 @@ const getCorsHeaders = (allowedOrigins, currentOrigin, exposeHeaders) => {
     }
     return options;
 };
-exports.getCorsHeaders = getCorsHeaders;
+export const dirName = () => {
+    try {
+        throw new Error();
+    }
+    catch (e) {
+        const initiator = e.stack.split("\n").slice(2, 3)[0];
+        let p = /(?<path>[^\(\s]+):[0-9]+:[0-9]+/.exec(initiator)?.groups?.path ?? "";
+        if (p.indexOf("file") >= 0) {
+            p = new URL(p).pathname;
+        }
+        let dirname = path.dirname(p);
+        if (dirname[0] === "/" && platform() === "win32") {
+            dirname = dirname.slice(1);
+        }
+        return dirname;
+    }
+};
 //# sourceMappingURL=Utils.js.map

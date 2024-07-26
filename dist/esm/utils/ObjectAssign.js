@@ -1,5 +1,4 @@
 "use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
 const toObject = (val) => {
     if (val === null || val === undefined) {
         throw new TypeError("Object.assign cannot be called with null or undefined");
@@ -61,5 +60,5 @@ const assign = shouldUseNative()
         }
         return to;
     };
-exports.default = assign;
+export default assign;
 //# sourceMappingURL=ObjectAssign.js.map

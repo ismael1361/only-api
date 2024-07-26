@@ -69,9 +69,9 @@ yarn add only-api
 Para utilizar o `only-api`, basta importar o pacote para o seu projeto e inicializá-lo com as configurações desejadas. Por exemplo:
 
 ```ts
-import flexRoute from 'only-api';
+import onlyApi from 'only-api';
 
-const app = flexRoute("./routes", {
+const app = onlyApi("./routes", {
     port: 3000,
     host: "localhost",
     middlewares: [
@@ -83,7 +83,7 @@ const app = flexRoute("./routes", {
 });
 ```
 
-O `flexRoute` requer dois parâmetros: o caminho para o diretório de rotas e um objeto de configuração opcional. O diretório de rotas deve seguir a estrutura de pastas mencionada anteriormente, onde cada subdiretório representa uma rota de API REST. O objeto de configuração pode conter as seguintes propriedades:
+O `onlyApi` requer dois parâmetros: o caminho para o diretório de rotas e um objeto de configuração opcional. O diretório de rotas deve seguir a estrutura de pastas mencionada anteriormente, onde cada subdiretório representa uma rota de API REST. O objeto de configuração pode conter as seguintes propriedades:
 
 - `port` [*number*]: a porta na qual o servidor será iniciado (padrão: `3000`)
 - `host` [*string*]: o host no qual o servidor será iniciado (padrão: `localhost`)

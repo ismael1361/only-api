@@ -1,7 +1,4 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.PathInfo = exports.PathReference = void 0;
-class PathReference {
+export class PathReference {
     path;
     /**
      * Cria uma referência a um caminho que pode ser armazenado no banco de dados. Use isso para criar referências cruzadas para outros dados em seu banco de dados.
@@ -11,7 +8,6 @@ class PathReference {
         this.path = path;
     }
 }
-exports.PathReference = PathReference;
 function getPathKeys(path) {
     path = path.replace(/\[/g, "/[").replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, ""); // Substitua `[` por `/[`, remova barras invertidas iniciais, remova barras invertidas finais
     if (path.length === 0) {
@@ -22,7 +18,7 @@ function getPathKeys(path) {
         return key.startsWith("[") ? parseInt(key.slice(1, -1)) : key;
     });
 }
-class PathInfo {
+export class PathInfo {
     static get(path) {
         return new PathInfo(path);
     }
@@ -333,6 +329,5 @@ class PathInfo {
         return this.equals(other.parent);
     }
 }
-exports.PathInfo = PathInfo;
-exports.default = PathInfo;
+export default PathInfo;
 //# sourceMappingURL=PathInfo.js.map

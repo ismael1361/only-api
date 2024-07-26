@@ -3,15 +3,16 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getCorsHeaders = exports.getCorsOptions = exports.resolvePath = exports.parseUrl = exports.PartialArray = exports.joinObject = void 0;
+exports.dirName = exports.getCorsHeaders = exports.getCorsOptions = exports.resolvePath = exports.parseUrl = exports.PartialArray = exports.joinObject = void 0;
 exports.cloneObject = cloneObject;
+const path_1 = __importDefault(require("path"));
 const PathInfo_1 = __importDefault(require("./PathInfo"));
+const os_1 = require("os");
 const joinObject = (obj, partial) => {
-    var _a;
-    const newObj = Object.assign({}, obj);
+    const newObj = { ...obj };
     for (const key in partial) {
         if (partial.hasOwnProperty(key)) {
-            newObj[key] = (_a = partial[key]) !== null && _a !== void 0 ? _a : obj[key];
+            newObj[key] = partial[key] ?? obj[key];
         }
     }
     return newObj;
@@ -163,7 +164,7 @@ exports.getCorsOptions = getCorsOptions;
  */
 const getCorsHeaders = (allowedOrigins, currentOrigin, exposeHeaders) => {
     const corsOptions = (0, exports.getCorsOptions)(Array.isArray(allowedOrigins) ? allowedOrigins.join(",") : allowedOrigins);
-    const origins = typeof corsOptions.origin === "boolean" ? (corsOptions.origin ? currentOrigin !== null && currentOrigin !== void 0 ? currentOrigin : "*" : "") : corsOptions.origin instanceof Array ? corsOptions.origin.join(",") : corsOptions.origin;
+    const origins = typeof corsOptions.origin === "boolean" ? (corsOptions.origin ? currentOrigin ?? "*" : "") : corsOptions.origin instanceof Array ? corsOptions.origin.join(",") : corsOptions.origin;
     const options = {
         "Access-Control-Allow-Origin": origins,
         "Access-Control-Allow-Methods": corsOptions.methods,
@@ -175,4 +176,22 @@ const getCorsHeaders = (allowedOrigins, currentOrigin, exposeHeaders) => {
     return options;
 };
 exports.getCorsHeaders = getCorsHeaders;
+const dirName = () => {
+    try {
+        throw new Error();
+    }
+    catch (e) {
+        const initiator = e.stack.split("\n").slice(2, 3)[0];
+        let p = /(?<path>[^\(\s]+):[0-9]+:[0-9]+/.exec(initiator)?.groups?.path ?? "";
+        if (p.indexOf("file") >= 0) {
+            p = new URL(p).pathname;
+        }
+        let dirname = path_1.default.dirname(p);
+        if (dirname[0] === "/" && (0, os_1.platform)() === "win32") {
+            dirname = dirname.slice(1);
+        }
+        return dirname;
+    }
+};
+exports.dirName = dirName;
 //# sourceMappingURL=Utils.js.map

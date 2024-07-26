@@ -13,17 +13,6 @@ var __createBinding = (this && this.__createBinding) || (Object.create ? (functi
 var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
-var __rest = (this && this.__rest) || function (s, e) {
-    var t = {};
-    for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
-        t[p] = s[p];
-    if (s != null && typeof Object.getOwnPropertySymbols === "function")
-        for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) {
-            if (e.indexOf(p[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s, p[i]))
-                t[p[i]] = s[p[i]];
-        }
-    return t;
-};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -39,19 +28,24 @@ const tools_1 = require("./tools");
 const contexts_1 = require("./contexts");
 const express_1 = __importDefault(require("express"));
 const Cors_1 = require("./utils/Cors");
+const multer_1 = __importDefault(require("multer"));
+const os_1 = require("os");
 __exportStar(require("./type"), exports);
 __exportStar(require("./tools"), exports);
+const localDir = (0, utils_1.dirName)();
 class OnlyApi extends utils_1.SimpleEventEmitter {
+    routePath;
+    _ready = false;
+    mainPath = localDir;
+    pathSearchRoutes = "";
+    _routes = {};
+    _routesPath = [];
+    _routesCache = new Map();
+    options;
+    app;
     constructor(routePath, options = {}) {
-        var _a;
         super();
         this.routePath = routePath;
-        this._ready = false;
-        this.mainPath = __dirname;
-        this.pathSearchRoutes = "";
-        this._routes = {};
-        this._routesPath = [];
-        this._routesCache = new Map();
         this.options = (0, utils_1.joinObject)({
             host: "localhost",
             port: 3000,
@@ -61,19 +55,30 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
             middlewares: [],
         }, options instanceof express_1.default ? {} : options);
         this.app = options instanceof express_1.default ? options : (0, express_1.default)();
-        const stack = ((_a = new Error().stack) !== null && _a !== void 0 ? _a : "").split("\n");
-        const frames = stack.map((frame) => {
+        const dirnames = (new Error().stack ?? "")
+            .split("\n")
+            .map((frame) => {
             frame = frame.trim();
-            const match = frame.match(/^at (.+) \((.+)(:(\d+):(\d+))\)$/i);
-            return match ? [match[1], match[2]] : frame;
-        });
-        for (let i = 1; i < frames.length; i++) {
-            const currentFrame = frames[i];
-            if (path_1.default.dirname(currentFrame[1]) !== __dirname) {
-                this.mainPath = path_1.default.resolve(path_1.default.dirname(currentFrame[1]), routePath);
-                break;
+            let p = /(?<path>[^\(\s]+):[0-9]+:[0-9]+/.exec(frame)?.groups?.path ?? "";
+            if (p.indexOf("file") >= 0) {
+                p = new URL(p).pathname;
             }
-        }
+            let dirname = path_1.default.dirname(p);
+            if (dirname[0] === "/" && (0, os_1.platform)() === "win32") {
+                dirname = dirname.slice(1);
+            }
+            return dirname;
+        })
+            .filter((dirname) => {
+            return (dirname &&
+                dirname.trim() !== "" &&
+                dirname.trim() !== "." &&
+                !dirname.split(/[\\\/]/gi).includes("internal") &&
+                !dirname.split(/[\\\/]/gi).includes("node_modules") &&
+                dirname.search(localDir) < 0 &&
+                dirname.search(localDir.replace(/\\/gi, "/")) < 0);
+        });
+        this.mainPath = path_1.default.resolve(dirnames[0], routePath);
         this.pathSearchRoutes = path_1.default.join(this.mainPath, "./**/index.{js,ts}").replace(/\\/g, "/");
         this.on("ready", () => {
             this._ready = true;
@@ -82,12 +87,12 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
     }
     async ready(callback) {
         if (this._ready) {
-            callback === null || callback === void 0 ? void 0 : callback();
+            callback?.();
             return Promise.resolve();
         }
         return new Promise((resolve) => {
             this.once("ready", () => {
-                callback === null || callback === void 0 ? void 0 : callback();
+                callback?.();
                 resolve();
             });
         });
@@ -121,6 +126,10 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
             });
             resolveReady();
         });
+        const storage = multer_1.default.memoryStorage();
+        const upload = (0, multer_1.default)({ storage });
+        this.app.use(upload.array("files", Infinity));
+        this.app.use(express_1.default.json());
         const route = Array.prototype.concat.apply([], [
             "/*",
             this.options.middlewares,
@@ -137,7 +146,7 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
                         throw new Error("Origin not allowed");
                     }
                 }
-                catch (_a) {
+                catch {
                     if (res && typeof res.status === "function" && !(res.finished || res.headersSent || res.destroyed)) {
                         res.status(403).send("Origin not allowed");
                     }
@@ -150,6 +159,7 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
                     headers: req.headers,
                     params: req.params,
                     query: req.query,
+                    body: req.body,
                 }, req, res);
                 try {
                     if (res.finished || res.headersSent || res.destroyed) {
@@ -198,9 +208,12 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
                     }
                     res.status(response.code).send(response.response);
                 }
-                catch (_b) { }
+                catch { }
             },
         ]);
+        this.app.get("/routes", (req, res) => {
+            res.json(this._routesPath);
+        });
         this.app.all(...route);
         this.app.all("*", (req, res) => {
             res.status(404).send("Not found");
@@ -211,13 +224,18 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
         });
     }
     async addRoute(routePath) {
-        var _a;
-        const p = routePath.replace(/\\/g, "/").replace(this.mainPath.replace(/\\/g, "/"), "").replace("/index.ts", "").replace("/index.js", "");
+        const p = routePath
+            .replace(/\\/g, "/")
+            .replace(this.mainPath.replace(/\\/g, "/"), "")
+            .replace("/index.ts", "")
+            .replace("/index.js", "")
+            .replace(/(\/{1,})\[/gi, "[");
         const exports = await (0, tsUtils_1.importModule)(routePath, true, () => {
             this.addRoute(routePath);
         });
+        console.log(exports);
         if (this._routesCache.has(p)) {
-            (_a = this._routesCache.get(p)) === null || _a === void 0 ? void 0 : _a.applyOptions(exports.cacheOptions);
+            this._routesCache.get(p)?.applyOptions(exports.cacheOptions);
         }
         else {
             this._routesCache.set(p, new utils_1.SimpleCache(exports.cacheOptions));
@@ -247,8 +265,9 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
         body: {},
         params: {},
         query: {},
+        files: [],
+        file: undefined,
     }, request, response) {
-        var _a, _b, _c, _d, _e, _f;
         const initialyTime = Date.now();
         try {
             await new Promise((resolve) => setTimeout(resolve, 0));
@@ -263,7 +282,7 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
                 throw new Error(`"/${routePath}": Route not found!`);
             }
             const moduleRoute = this._routes[findRoute];
-            const method = ((_a = options.method) !== null && _a !== void 0 ? _a : "GET").toLowerCase();
+            const method = (options.method ?? "GET").toLowerCase();
             const methodBy = method === "get" && "get" in moduleRoute
                 ? "get"
                 : method === "post" && "post" in moduleRoute
@@ -279,10 +298,28 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
                 throw new Error(`"/${routePath}": Method not allowed!`);
             }
             const prevConfig = contexts_1.RouteConfigContext.get();
-            const res = response !== null && response !== void 0 ? response : prevConfig.res;
-            const req = request !== null && request !== void 0 ? request : prevConfig.req;
+            const res = response ?? prevConfig.res;
+            const req = request ?? prevConfig.req;
+            const files = (options && Array.isArray(options.files) ? options.files : req && Array.isArray(req.files) ? req.files : [])
+                .filter((b) => b instanceof Buffer || (typeof b === "object" && "buffer" in b))
+                .map((b) => {
+                return b instanceof Buffer
+                    ? {
+                        fieldname: "file",
+                        originalname: "file",
+                        encoding: "7bit",
+                        mimetype: "application/octet-stream",
+                        size: b.length,
+                        stream: undefined,
+                        destination: "",
+                        filename: "file",
+                        path: "",
+                        buffer: b,
+                    }
+                    : b;
+            });
             const getParams = () => {
-                const _a = utils_1.PathInfo.extractVariables(findRoute, routePath), { length } = _a, params = __rest(_a, ["length"]);
+                const { length, ...params } = utils_1.PathInfo.extractVariables(findRoute, routePath);
                 return Object.entries(params).reduce((acc, [key, value]) => {
                     acc[key] = decodeURIComponent(value.toString());
                     return acc;
@@ -295,7 +332,6 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
                 }, {});
             };
             const fn = async () => {
-                var _a, _b, _c, _d, _e, _f, _g, _h;
                 try {
                     await new Promise((resolve) => setTimeout(resolve, 0));
                     // const cached = getCachedResponse();
@@ -305,14 +341,20 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
                     const valueContext = contexts_1.RouteRequestContext.get();
                     const middleware = ("middleware" in moduleRoute ? (Array.isArray(moduleRoute.middleware) ? moduleRoute.middleware : [moduleRoute.middleware]) : []).filter((fn) => typeof fn === "function");
                     const callbacks = middleware.concat((Array.isArray(moduleRoute[methodBy]) ? moduleRoute[methodBy] : [moduleRoute[methodBy]]));
-                    const cache = (_a = this._routesCache.get(findRoute)) !== null && _a !== void 0 ? _a : new utils_1.SimpleCache();
+                    const cache = this._routesCache.get(findRoute) ?? new utils_1.SimpleCache();
                     const req = {
-                        method: (_c = (_b = options.method) === null || _b === void 0 ? void 0 : _b.toUpperCase()) !== null && _c !== void 0 ? _c : "GET",
-                        headers: Object.assign(Object.assign({}, parseHeaders(valueContext.headers)), parseHeaders((_d = options.headers) !== null && _d !== void 0 ? _d : {})),
-                        body: (_f = (_e = options.body) !== null && _e !== void 0 ? _e : valueContext.body) !== null && _f !== void 0 ? _f : {},
-                        params: Object.assign(Object.assign({}, getParams()), ((_g = options.params) !== null && _g !== void 0 ? _g : {})),
-                        query: Object.assign(Object.assign(Object.assign({}, valueContext.query), ((_h = options.query) !== null && _h !== void 0 ? _h : {})), searchParams),
+                        method: options.method?.toUpperCase() ?? "GET",
+                        headers: { ...parseHeaders(valueContext.headers), ...parseHeaders(options.headers ?? {}) },
+                        body: options.body ?? valueContext.body ?? {},
+                        params: { ...getParams(), ...(options.params ?? {}) },
+                        query: {
+                            ...valueContext.query,
+                            ...(options.query ?? {}),
+                            ...searchParams,
+                        },
                         cache,
+                        files,
+                        file: options.file instanceof Buffer ? options.file : files.length > 0 ? files[0] : undefined,
                     };
                     let response;
                     for (let i = 0; i < callbacks.length; i++) {
@@ -357,11 +399,16 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
                 original: routePath,
                 parsed: findRoute,
             }), {
-                method: (_b = options.method) !== null && _b !== void 0 ? _b : "GET",
-                headers: (_c = options.headers) !== null && _c !== void 0 ? _c : {},
-                body: (_d = options.body) !== null && _d !== void 0 ? _d : {},
-                params: Object.assign(Object.assign({}, getParams()), ((_e = options.params) !== null && _e !== void 0 ? _e : {})),
-                query: Object.assign(Object.assign({}, ((_f = options.query) !== null && _f !== void 0 ? _f : {})), searchParams),
+                method: options.method ?? "GET",
+                headers: options.headers ?? {},
+                body: options.body ?? {},
+                params: { ...getParams(), ...(options.params ?? {}) },
+                query: {
+                    ...(options.query ?? {}),
+                    ...searchParams,
+                },
+                files,
+                file: options.file instanceof Buffer ? options.file : files.length > 0 ? files[0] : undefined,
             })();
             return new utils_1.RouteResponse({
                 response: result.response,

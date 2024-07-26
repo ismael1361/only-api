@@ -7,6 +7,14 @@ const calculateExpiryTime = (expirySeconds) => (expirySeconds > 0 ? Date.now() +
  * A imutabilidade é garantida clonando os valores armazenados e recuperados. Para alterar um valor em cache, ele terá que ser `set` novamente com o novo valor.
  */
 class SimpleCache {
+    options = {
+        cloneValues: true,
+        expirySeconds: 15,
+        maxEntries: 1000,
+        updateExpiration: true,
+    };
+    cache = new Map();
+    enabled = true;
     get size() {
         return this.cache.size;
     }
@@ -16,21 +24,12 @@ class SimpleCache {
         maxEntries: 1000,
         updateExpiration: true,
     }) {
-        var _a;
-        this.options = {
-            cloneValues: true,
-            expirySeconds: 15,
-            maxEntries: 1000,
-            updateExpiration: true,
-        };
-        this.cache = new Map();
-        this.enabled = true;
         this.applyOptions(options);
         // Limpeza a cada minuto
         const interval = setInterval(() => {
             this.cleanUp();
         }, 60 * 1000);
-        (_a = interval.unref) === null || _a === void 0 ? void 0 : _a.call(interval);
+        interval.unref?.();
     }
     applyOptions(options) {
         if (!options) {
@@ -44,7 +43,7 @@ class SimpleCache {
         if (typeof options.expirySeconds !== "number" && typeof options.maxEntries !== "number") {
             throw new Error("Either expirySeconds or maxEntries must be specified");
         }
-        this.options = Object.assign({ expirySeconds: 15, updateExpiration: true }, options);
+        this.options = { expirySeconds: 15, updateExpiration: true, ...options };
     }
     has(key) {
         if (!this.enabled) {
@@ -60,7 +59,7 @@ class SimpleCache {
         if (!entry) {
             return;
         } // if (!entry || entry.expires <= Date.now()) { return null; }
-        updateExpiration = updateExpiration !== null && updateExpiration !== void 0 ? updateExpiration : this.options.updateExpiration;
+        updateExpiration = updateExpiration ?? this.options.updateExpiration;
         if (updateExpiration) {
             entry.expires = calculateExpiryTime(this.options.expirySeconds);
             entry.accessed = Date.now();
@@ -92,7 +91,7 @@ class SimpleCache {
             value: this.options.cloneValues ? (0, Utils_1.cloneObject)(value) : value,
             added: Date.now(),
             accessed: Date.now(),
-            expires: calculateExpiryTime(expirySeconds !== null && expirySeconds !== void 0 ? expirySeconds : this.options.expirySeconds),
+            expires: calculateExpiryTime(expirySeconds ?? this.options.expirySeconds),
         });
     }
     remove(key) {

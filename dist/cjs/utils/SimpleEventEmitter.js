@@ -11,6 +11,8 @@ function runCallback(callback, data) {
 const _subscriptions = Symbol("subscriptions");
 const _oneTimeEvents = Symbol("oneTimeEvents");
 class SimpleEventEmitter {
+    [_subscriptions];
+    [_oneTimeEvents];
     constructor() {
         this[_subscriptions] = [];
         this[_oneTimeEvents] = new Map();
@@ -37,7 +39,7 @@ class SimpleEventEmitter {
         return new Promise((resolve) => {
             const ourCallback = (data) => {
                 resolve(data);
-                callback === null || callback === void 0 ? void 0 : callback(data);
+                callback?.(data);
             };
             if (this[_oneTimeEvents].has(event)) {
                 runCallback(ourCallback, this[_oneTimeEvents].get(event));

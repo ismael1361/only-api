@@ -11,6 +11,7 @@ exports.RouteRequestContext = (0, fn_context_1.default)({
     body: {},
     params: {},
     query: {},
+    files: [],
 });
 exports.RoutePathContext = (0, fn_context_1.default)({
     original: "",

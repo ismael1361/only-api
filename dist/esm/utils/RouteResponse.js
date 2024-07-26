@@ -1,7 +1,5 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-const stream_1 = require("stream");
-class RouteResponse {
+import { Readable } from "stream";
+export default class RouteResponse {
     response;
     content;
     type;
@@ -95,7 +93,7 @@ class RouteResponse {
     static stream(stream, content = "application/octet-stream") {
         let start = 0;
         const response = stream instanceof Function
-            ? new stream_1.Readable({
+            ? new Readable({
                 read(size) {
                     const chunk = stream(start, start + size);
                     if (chunk) {
@@ -191,7 +189,6 @@ class RouteResponse {
         };
     }
 }
-exports.default = RouteResponse;
 const codeStatus = {
     200: "OK",
     201: "Created",

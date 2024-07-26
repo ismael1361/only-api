@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PathInfo = exports.PathReference = void 0;
 class PathReference {
+    path;
     /**
      * Cria uma referência a um caminho que pode ser armazenado no banco de dados. Use isso para criar referências cruzadas para outros dados em seu banco de dados.
      * @param path
@@ -32,6 +33,8 @@ class PathInfo {
     static getPathKeys(path) {
         return getPathKeys(path).filter((key, i) => !(key === "" && i === 0));
     }
+    path;
+    keys;
     constructor(path) {
         if (typeof path === "string") {
             this.keys = getPathKeys(path);
@@ -61,8 +64,7 @@ class PathInfo {
         return new PathInfo(parentKeys);
     }
     get parentPath() {
-        var _a, _b;
-        return this.keys.length === 0 ? null : (_b = (_a = this.parent) === null || _a === void 0 ? void 0 : _a.path) !== null && _b !== void 0 ? _b : null;
+        return this.keys.length === 0 ? null : this.parent?.path ?? null;
     }
     child(childKey) {
         if (typeof childKey === "string") {
@@ -314,12 +316,11 @@ class PathInfo {
      * Verifica se um determinado caminho é um filho direto, por exemplo, "posts/1234/title" é um filho de "posts/1234"
      */
     isChildOf(otherPath) {
-        var _a, _b;
         const other = otherPath instanceof PathInfo ? otherPath : new PathInfo(otherPath);
         if (this.path === "") {
             return false;
         } // Se nosso caminho for a raiz, ele não é filho de ninguém...
-        return (_b = (_a = this.parent) === null || _a === void 0 ? void 0 : _a.equals(other)) !== null && _b !== void 0 ? _b : false;
+        return this.parent?.equals(other) ?? false;
     }
     /**
      * Verifica se um determinado caminho é seu pai, por exemplo, "posts/1234" é o pai de "posts/1234/title"

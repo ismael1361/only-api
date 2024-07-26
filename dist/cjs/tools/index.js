@@ -105,10 +105,9 @@ const corsOringin = (origin, exposeHeaders) => {
         res.setHeader(name, headers[name]);
     }
     const allowed = (0, Cors_1.corsSync)((req, callback) => {
-        var _a;
         const corsOptions = { origin: false };
         const whitelist = headers["Access-Control-Allow-Origin"].split(/,\s*/);
-        if (whitelist.includes((_a = req.headers.origin) !== null && _a !== void 0 ? _a : "") || whitelist.includes("*")) {
+        if (whitelist.includes(req.headers.origin ?? "") || whitelist.includes("*")) {
             corsOptions.origin = true;
         }
         callback(null, corsOptions);

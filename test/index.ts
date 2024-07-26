@@ -1,4 +1,4 @@
-import flexRoute from "../src";
+import flexRoute from "only-api";
 
 const app = flexRoute("./routes");
 

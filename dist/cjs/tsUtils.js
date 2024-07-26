@@ -33,20 +33,52 @@ const typescript_1 = __importDefault(require("typescript"));
 const colorette = __importStar(require("colorette"));
 const utils_1 = require("./utils");
 const vm = __importStar(require("vm"));
+const json5_1 = __importDefault(require("json5"));
+const module_1 = require("module");
+const url_1 = require("url");
 const getTSCompilerOptions = (filePath) => {
-    var _a, _b, _c, _d, _e;
     let options = {};
     let tsconfigFile = filePath;
     while (fs_1.default.existsSync(path_1.default.resolve(tsconfigFile, "tsconfig.json")) !== true && path_1.default.dirname(tsconfigFile) !== path_1.default.dirname(process.cwd())) {
         tsconfigFile = path_1.default.dirname(tsconfigFile);
     }
-    if (fs_1.default.existsSync(path_1.default.resolve(tsconfigFile, "tsconfig.json"))) {
-        const tsconfig = JSON.parse(fs_1.default.readFileSync(path_1.default.resolve(tsconfigFile, "tsconfig.json"), "utf-8"));
-        options = (_a = tsconfig.compilerOptions) !== null && _a !== void 0 ? _a : {};
+    try {
+        if (fs_1.default.existsSync(path_1.default.resolve(tsconfigFile, "tsconfig.json"))) {
+            const tsconfig = json5_1.default.parse(fs_1.default.readFileSync(path_1.default.resolve(tsconfigFile, "tsconfig.json"), "utf-8"));
+            options = tsconfig.compilerOptions ?? {};
+        }
     }
-    const rootDir = path_1.default.join(tsconfigFile, (_b = options.rootDir) !== null && _b !== void 0 ? _b : "");
-    const compilerOptions = Object.assign(Object.assign({ listEmittedFiles: true, declaration: true, declarationMap: true, sourceMap: true, forceConsistentCasingInFileNames: true, allowJs: true, checkJs: false, allowSyntheticDefaultImports: true, noFallthroughCasesInSwitch: true, esModuleInterop: true, resolveJsonModule: true, strict: true, noImplicitAny: false, skipLibCheck: true, pretty: true, noEmitOnError: true, removeComments: false }, options), { lib: [...((_c = options.lib) !== null && _c !== void 0 ? _c : []), "esnext", "ES2015"].map((lib) => `lib.${lib.toLowerCase()}.d.ts`), target: typescript_1.default.ScriptTarget.ESNext, module: typescript_1.default.ModuleKind.CommonJS, moduleResolution: typescript_1.default.ModuleResolutionKind.NodeJs, rootDir: typeof options.rootDir === "string" ? rootDir : undefined, outDir: typeof options.outDir === "string" ? path_1.default.join(tsconfigFile, options.outDir) : undefined, declarationDir: typeof options.declarationDir === "string" ? path_1.default.join(tsconfigFile, options.declarationDir) : undefined });
-    compilerOptions.baseUrl = (_e = (_d = compilerOptions.baseUrl) !== null && _d !== void 0 ? _d : compilerOptions.rootDir) !== null && _e !== void 0 ? _e : tsconfigFile;
+    catch (err) { }
+    const rootDir = path_1.default.join(tsconfigFile, options.rootDir ?? "");
+    const compilerOptions = {
+        listEmittedFiles: true,
+        declaration: true,
+        declarationMap: true,
+        sourceMap: true,
+        forceConsistentCasingInFileNames: true,
+        allowJs: true,
+        checkJs: false,
+        allowSyntheticDefaultImports: true,
+        noFallthroughCasesInSwitch: true,
+        esModuleInterop: true,
+        resolveJsonModule: true,
+        strict: true,
+        noImplicitAny: false,
+        skipLibCheck: true,
+        pretty: true,
+        noEmitOnError: true,
+        removeComments: false,
+        ...options,
+        target: typescript_1.default.ScriptTarget.ESNext,
+        module: typescript_1.default.ModuleKind.CommonJS,
+        moduleResolution: typescript_1.default.ModuleResolutionKind.NodeJs,
+        lib: [...(options.lib ?? []), "esnext", "ES2015"].map((lib) => `lib.${lib.toLowerCase()}.d.ts`),
+        rootDir: typeof options.rootDir === "string" ? rootDir : undefined,
+        outDir: typeof options.outDir === "string" ? path_1.default.join(tsconfigFile, options.outDir) : undefined,
+        declarationDir: typeof options.declarationDir === "string" ? path_1.default.join(tsconfigFile, options.declarationDir) : undefined,
+        noEmit: false,
+    };
+    compilerOptions.baseUrl = compilerOptions.baseUrl ?? compilerOptions.rootDir ?? tsconfigFile;
     return compilerOptions;
 };
 const validateTypeScript = (filePath) => {
@@ -55,15 +87,14 @@ const validateTypeScript = (filePath) => {
     // Carregar as configurações do tsconfig.json (se existir)
     const compilerOptions = getTSCompilerOptions(filePath);
     // Criar o compilador TypeScript
-    const program = typescript_1.default.createProgram([filePath], Object.assign(Object.assign({}, compilerOptions), { outDir: path_1.default.resolve(process.cwd(), "dist") }));
+    const program = typescript_1.default.createProgram([filePath], { ...compilerOptions, outDir: path_1.default.resolve(process.cwd(), "dist") });
     // Verificar se há erros no código TypeScript
     const diagnostics = typescript_1.default.getPreEmitDiagnostics(program);
     if (diagnostics.length > 0) {
         // Exibir erros de validação
         diagnostics.forEach((diagnostic) => {
-            var _a, _b;
             const message = typescript_1.default.flattenDiagnosticMessageText(diagnostic.messageText, "\n");
-            const fileName = (_b = (_a = diagnostic.file) === null || _a === void 0 ? void 0 : _a.fileName) !== null && _b !== void 0 ? _b : filePath;
+            const fileName = diagnostic.file?.fileName ?? filePath;
             if (diagnostic.file && diagnostic.start !== undefined) {
                 const { line, character } = diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start);
                 const errorLine = fileContent.split("\n")[line].replace(/\t/g, " ");
@@ -104,7 +135,7 @@ const compileTypeScript = (filePath) => {
         const compilerOptions = getTSCompilerOptions(filePath);
         // Compilar o código TypeScript
         const { outputText, sourceMapText } = typescript_1.default.transpileModule(fileContent, {
-            compilerOptions: Object.assign(Object.assign({}, compilerOptions), { sourceMap: true }),
+            compilerOptions: { ...compilerOptions, sourceMap: true },
             fileName: filePath,
             transformers: {
                 before: [
@@ -125,17 +156,38 @@ const compileTypeScript = (filePath) => {
             },
         });
         // Retorna o código JavaScript transpilado
-        return `${outputText.replace(/\n\/\/\# sourceMappingURL\=(.+)$/gi, "")}\n//# sourceMappingURL=data:application/json;base64,${Buffer.from(sourceMapText !== null && sourceMapText !== void 0 ? sourceMapText : "").toString("base64")}`;
+        return `${outputText.replace(/\n\/\/\# sourceMappingURL\=(.+)$/gi, "")}\n//# sourceMappingURL=data:application/json;base64,${Buffer.from(sourceMapText ?? "").toString("base64")}`;
     }
-    catch (_a) { }
+    catch { }
     return "";
 };
 const cacheModules = new Map();
 const observeModules = new Map();
+const getRequire = (p) => {
+    console.log(p);
+    try {
+        // Tenta carregar usando require
+        return require(p);
+    }
+    catch (e1) {
+        console.log(`Failed to require module ${p}:`, e1);
+        try {
+            // Converte para caminho absoluto
+            const absolutePath = path_1.default.isAbsolute(p) ? p : path_1.default.resolve(process.cwd(), p);
+            // Cria um require a partir da URL do módulo atual
+            const moduleURL = (0, url_1.pathToFileURL)(absolutePath).href;
+            const customRequire = (0, module_1.createRequire)(moduleURL);
+            return customRequire(absolutePath);
+        }
+        catch (e2) {
+            console.log(`Failed to custom require module ${p}:`, e2);
+            return {};
+        }
+    }
+};
 const createCustomRequire = (filePath, onMutate) => {
     const baseDir = path_1.default.dirname(filePath);
     return (modulePath) => {
-        var _a;
         try {
             let absolutePath = fs_1.default.existsSync(modulePath)
                 ? modulePath
@@ -155,15 +207,14 @@ const createCustomRequire = (filePath, onMutate) => {
                 }
             }
             const updateImport = () => {
-                var _a, _b;
                 (0, exports.importModule)(absolutePath, true, updateImport);
-                const callbacks = Object.values((_b = (_a = observeModules.get(absolutePath)) === null || _a === void 0 ? void 0 : _a.modules) !== null && _b !== void 0 ? _b : {});
+                const callbacks = Object.values(observeModules.get(absolutePath)?.modules ?? {});
                 for (const callback of callbacks) {
                     callback();
                 }
             };
             const module = (0, exports.importModule)(absolutePath, false, updateImport);
-            const observer = (_a = observeModules.get(absolutePath)) !== null && _a !== void 0 ? _a : {
+            const observer = observeModules.get(absolutePath) ?? {
                 event: undefined,
                 modules: {},
             };
@@ -183,14 +234,14 @@ const createCustomRequire = (filePath, onMutate) => {
             return module;
         }
         catch (err) {
-            return require(modulePath);
+            return getRequire(modulePath);
         }
     };
 };
 const getGlobalContext = (filePath, exports, onMutateImports) => {
     const globalContext = Object.create(global);
-    globalContext.__filename = filePath;
-    globalContext.__dirname = path_1.default.dirname(filePath);
+    globalContext["__filename"] = filePath;
+    globalContext["__dirname"] = path_1.default.dirname(filePath);
     globalContext.console = console;
     globalContext.setTimeout = setTimeout;
     globalContext.clearTimeout = clearTimeout;
@@ -216,13 +267,14 @@ const importModule = (filePath, ignoreCache = false, onMutateImports) => {
         }
     }
     else {
-        return require(filePath);
+        return getRequire(filePath);
     }
     if (cacheModules.has(filePath) && !ignoreCache) {
         return cacheModules.get(filePath);
     }
     const compiledCode = compileTypeScript(filePath);
     const exports = {};
+    console.log("compiledCode", compiledCode);
     const script = new vm.Script(compiledCode, { filename: filePath });
     const context = vm.createContext(getGlobalContext(filePath, exports, onMutateImports));
     script.runInContext(context);

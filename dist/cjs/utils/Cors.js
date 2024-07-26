@@ -35,8 +35,7 @@ const isOriginAllowed = (origin, allowedOrigin) => {
     }
 };
 const configureOrigin = (options, req) => {
-    var _a;
-    const requestOrigin = (_a = req.headers.origin) !== null && _a !== void 0 ? _a : "", headers = [];
+    const requestOrigin = req.headers.origin ?? "", headers = [];
     let isAllowed = false;
     if (!options.origin || options.origin === "*") {
         // allow any origin
@@ -166,7 +165,6 @@ const applyHeaders = (headers, res) => {
     }
 };
 const cors = (options, req, res) => {
-    var _a;
     var headers = [], method = req.method && req.method.toUpperCase && req.method.toUpperCase();
     if (method === "OPTIONS") {
         // preflight
@@ -183,7 +181,7 @@ const cors = (options, req, res) => {
         else {
             // Safari (and potentially other browsers) need content-length 0,
             //   for 204 or they just hang waiting for a body
-            res.statusCode = (_a = options.optionsSuccessStatus) !== null && _a !== void 0 ? _a : res.statusCode;
+            res.statusCode = options.optionsSuccessStatus ?? res.statusCode;
             res.setHeader("Content-Length", "0");
             res.end();
         }
@@ -197,7 +195,6 @@ const cors = (options, req, res) => {
     }
 };
 const corsSync = (options, req, res) => {
-    var _a, _b;
     const optionsCallback = typeof options === "function"
         ? options
         : function (req, cb) {
@@ -240,8 +237,8 @@ const corsSync = (options, req, res) => {
             erro = e;
         }
     });
-    const allowed = ((_a = res.getHeader("Access-Control-Allow-Origin")) !== null && _a !== void 0 ? _a : "*").split(/\s*,\s*/);
-    return erro === undefined && (allowed.includes((_b = req.headers.origin) !== null && _b !== void 0 ? _b : "*") || allowed.includes("*"));
+    const allowed = (res.getHeader("Access-Control-Allow-Origin") ?? "*").split(/\s*,\s*/);
+    return erro === undefined && (allowed.includes(req.headers.origin ?? "*") || allowed.includes("*"));
 };
 exports.corsSync = corsSync;
 const middlewareWrapper = (options) => {

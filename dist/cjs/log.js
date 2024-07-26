@@ -35,11 +35,10 @@ const logTrace = (type, message, fileName, ln, col) => {
 };
 exports.logTrace = logTrace;
 const logError = (error) => {
-    var _a, _b;
     const message = error.message;
-    const stack = (_a = error.stack) !== null && _a !== void 0 ? _a : "";
+    const stack = error.stack ?? "";
     const lines = stack.split("\n").slice(1);
-    const [_, t, file, ln, col] = (_b = lines[0].match(/at (.+) \((.+):(\d+):(\d+)\)/i)) !== null && _b !== void 0 ? _b : [];
+    const [_, t, file, ln, col] = lines[0].match(/at (.+) \((.+):(\d+):(\d+)\)/i) ?? [];
     (0, exports.logTrace)("error", message, file, ln ? Number(ln) : undefined, col ? Number(col) : undefined);
 };
 exports.logError = logError;

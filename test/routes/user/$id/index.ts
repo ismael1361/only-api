@@ -1,4 +1,4 @@
-import { RouteResponse, RouteRequest, fetchRoute, getUrlOrigin, cacheControl, requiresAccess, corsOringin } from "src";
+import { RouteResponse, RouteRequest, fetchRoute, getUrlOrigin, cacheControl, requiresAccess, corsOringin } from "only-api";
 import { Users } from "controlers";
 
 export const get = async (req: RouteRequest<{}, "id", "date" | "q">) => {

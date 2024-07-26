@@ -1,6 +1,4 @@
 "use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.append = void 0;
 const FIELD_NAME_REGEXP = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 /**
  * Append a field to a vary header.
@@ -10,7 +8,7 @@ const FIELD_NAME_REGEXP = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
  * @return {String}
  * @public
  */
-const append = (header, field) => {
+export const append = (header, field) => {
     if (typeof header !== "string") {
         throw new TypeError("header argument is required");
     }
@@ -46,7 +44,6 @@ const append = (header, field) => {
     }
     return val;
 };
-exports.append = append;
 /**
  * Parse a vary header into an array.
  *
@@ -94,9 +91,9 @@ const vary = (res, field) => {
     let val = res.getHeader("Vary") || "";
     const header = Array.isArray(val) ? val.join(", ") : String(val);
     // set new header
-    if ((val = (0, exports.append)(header, field))) {
+    if ((val = append(header, field))) {
         res.setHeader("Vary", val);
     }
 };
-exports.default = vary;
+export default vary;
 //# sourceMappingURL=vary.js.map

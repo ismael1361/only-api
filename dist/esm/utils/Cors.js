@@ -1,11 +1,6 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.middlewareWrapper = exports.corsSync = void 0;
-const ObjectAssign_1 = __importDefault(require("./ObjectAssign.js"));
-const vary_1 = __importDefault(require("./vary.js"));
+import assign from "./ObjectAssign.js";
+import vary from "./vary.js";
 const defaults = {
     origin: "*",
     methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
@@ -157,7 +152,7 @@ const applyHeaders = (headers, res) => {
     }
     else if (headers) {
         if (headers.key === "Vary" && headers.value) {
-            (0, vary_1.default)(res, headers.value);
+            vary(res, headers.value);
         }
         else if (headers.value) {
             res.setHeader(headers.key, headers.value);
@@ -194,7 +189,7 @@ const cors = (options, req, res) => {
         applyHeaders(headers, res);
     }
 };
-const corsSync = (options, req, res) => {
+export const corsSync = (options, req, res) => {
     const optionsCallback = typeof options === "function"
         ? options
         : function (req, cb) {
@@ -207,7 +202,7 @@ const corsSync = (options, req, res) => {
                 throw err;
             }
             else {
-                const corsOptions = (0, ObjectAssign_1.default)({}, defaults, options);
+                const corsOptions = assign({}, defaults, options);
                 let originCallback = null;
                 if (corsOptions.origin && typeof corsOptions.origin === "function") {
                     originCallback = corsOptions.origin;
@@ -240,8 +235,7 @@ const corsSync = (options, req, res) => {
     const allowed = (res.getHeader("Access-Control-Allow-Origin") ?? "*").split(/\s*,\s*/);
     return erro === undefined && (allowed.includes(req.headers.origin ?? "*") || allowed.includes("*"));
 };
-exports.corsSync = corsSync;
-const middlewareWrapper = (options) => {
+export const middlewareWrapper = (options) => {
     const optionsCallback = typeof options === "function"
         ? options
         : function (req, cb) {
@@ -249,7 +243,7 @@ const middlewareWrapper = (options) => {
         };
     return function corsMiddleware(req, res, next) {
         try {
-            const allowed = (0, exports.corsSync)(optionsCallback, req, res);
+            const allowed = corsSync(optionsCallback, req, res);
             if (!allowed) {
                 throw new Error("Origin not allowed");
             }
@@ -260,6 +254,5 @@ const middlewareWrapper = (options) => {
         next();
     };
 };
-exports.middlewareWrapper = middlewareWrapper;
-exports.default = exports.middlewareWrapper;
+export default middlewareWrapper;
 //# sourceMappingURL=Cors.js.map

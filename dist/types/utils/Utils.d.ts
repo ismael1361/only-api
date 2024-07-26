@@ -31,4 +31,5 @@ export declare const getCorsHeaders: (allowedOrigins: string | string[], current
     "Access-Control-Allow-Headers": string;
     "Access-Control-Expose-Headers"?: string;
 };
+export declare const dirName: () => string;
 //# sourceMappingURL=Utils.d.ts.map

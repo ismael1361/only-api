@@ -5,6 +5,10 @@ import * as colorette from "colorette";
 
 import { PathInfo } from "./utils";
 import * as vm from "vm";
+import JSON5 from "json5";
+
+import { createRequire } from "module";
+import { pathToFileURL } from "url";
 
 const getTSCompilerOptions = (filePath: string): ts.CompilerOptions => {
 	let options: ts.CompilerOptions = {};
@@ -15,10 +19,12 @@ const getTSCompilerOptions = (filePath: string): ts.CompilerOptions => {
 		tsconfigFile = path.dirname(tsconfigFile);
 	}
 
-	if (fs.existsSync(path.resolve(tsconfigFile, "tsconfig.json"))) {
-		const tsconfig: ts.TranspileOptions = JSON.parse(fs.readFileSync(path.resolve(tsconfigFile, "tsconfig.json"), "utf-8"));
-		options = tsconfig.compilerOptions ?? {};
-	}
+	try {
+		if (fs.existsSync(path.resolve(tsconfigFile, "tsconfig.json"))) {
+			const tsconfig: ts.TranspileOptions = JSON5.parse(fs.readFileSync(path.resolve(tsconfigFile, "tsconfig.json"), "utf-8"));
+			options = tsconfig.compilerOptions ?? {};
+		}
+	} catch (err) {}
 
 	const rootDir = path.join(tsconfigFile, options.rootDir ?? "");
 
@@ -41,13 +47,14 @@ const getTSCompilerOptions = (filePath: string): ts.CompilerOptions => {
 		noEmitOnError: true,
 		removeComments: false,
 		...options,
-		lib: [...(options.lib ?? []), "esnext", "ES2015"].map((lib) => `lib.${lib.toLowerCase()}.d.ts`),
 		target: ts.ScriptTarget.ESNext,
 		module: ts.ModuleKind.CommonJS,
 		moduleResolution: ts.ModuleResolutionKind.NodeJs,
+		lib: [...(options.lib ?? []), "esnext", "ES2015"].map((lib) => `lib.${lib.toLowerCase()}.d.ts`),
 		rootDir: typeof options.rootDir === "string" ? rootDir : undefined,
 		outDir: typeof options.outDir === "string" ? path.join(tsconfigFile, options.outDir) : undefined,
 		declarationDir: typeof options.declarationDir === "string" ? path.join(tsconfigFile, options.declarationDir) : undefined,
+		noEmit: false,
 	};
 
 	compilerOptions.baseUrl = compilerOptions.baseUrl ?? compilerOptions.rootDir ?? tsconfigFile;
@@ -159,6 +166,25 @@ const compileTypeScript = (filePath: string): string => {
 const cacheModules = new Map<string, any>();
 const observeModules = new Map<string, { event?: fs.StatsListener; modules: Record<string, () => void> }>();
 
+const getRequire = (p: string): any => {
+	console.log(p);
+	try {
+		// Tenta carregar usando require
+		return require(p);
+	} catch (e1) {
+		try {
+			// Converte para caminho absoluto
+			const absolutePath = path.isAbsolute(p) ? p : path.resolve(process.cwd(), p);
+			// Cria um require a partir da URL do módulo atual
+			const moduleURL = pathToFileURL(absolutePath).href;
+			const customRequire = createRequire(moduleURL);
+			return customRequire(absolutePath);
+		} catch (e2) {
+			return {};
+		}
+	}
+};
+
 const createCustomRequire = (filePath: string, onMutate?: () => void) => {
 	const baseDir = path.dirname(filePath);
 	return (modulePath: string) => {
@@ -221,7 +247,7 @@ const createCustomRequire = (filePath: string, onMutate?: () => void) => {
 
 			return module;
 		} catch (err) {
-			return require(modulePath);
+			return getRequire(modulePath);
 		}
 	};
 };
@@ -229,8 +255,8 @@ const createCustomRequire = (filePath: string, onMutate?: () => void) => {
 const getGlobalContext = (filePath: string, exports: Record<string, any>, onMutateImports?: () => void) => {
 	const globalContext = Object.create(global);
 
-	globalContext.__filename = filePath;
-	globalContext.__dirname = path.dirname(filePath);
+	globalContext["__filename"] = filePath;
+	globalContext["__dirname"] = path.dirname(filePath);
 	globalContext.console = console;
 	globalContext.setTimeout = setTimeout;
 	globalContext.clearTimeout = clearTimeout;
@@ -257,7 +283,7 @@ export const importModule = (filePath: string, ignoreCache: boolean = false, onM
 			}
 		}
 	} else {
-		return require(filePath);
+		return getRequire(filePath);
 	}
 
 	if (cacheModules.has(filePath) && !ignoreCache) {
@@ -266,6 +292,8 @@ export const importModule = (filePath: string, ignoreCache: boolean = false, onM
 
 	const compiledCode = compileTypeScript(filePath);
 	const exports = {};
+
+	// console.log("compiledCode", compiledCode);
 
 	const script = new vm.Script(compiledCode, { filename: filePath });
 	const context = vm.createContext(getGlobalContext(filePath, exports, onMutateImports));

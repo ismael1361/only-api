@@ -1,16 +1,34 @@
 {
+	"type": "module",
 	"name": "only-api",
-	"version": "0.1.0",
+	"version": "0.1.53",
 	"description": "O `only-api` é um pacote projetado para facilitar a criação de rotas de maneira flexível e dinâmica, eliminando a necessidade de configurações excessivas e complexas para desenvolver uma estrutura de API REST.",
 	"private": false,
 	"main": "./dist/cjs/index.js",
 	"module": "./dist/esm/index.js",
-	"types": "./dist/esm/index.d.ts",
+	"types": "./dist/types/index.d.ts",
+	"exports": {
+		".": {
+			"import": "./dist/esm/index.js",
+			"require": "./dist/cjs/index.js",
+			"types": "./dist/types/index.d.ts"
+		},
+		"./esm": {
+			"import": "./dist/esm/index.js",
+			"require": "./dist/cjs/index.js",
+			"types": "./dist/types/index.d.ts"
+		},
+		"./cjs": {
+			"import": "./dist/esm/index.js",
+			"require": "./dist/cjs/index.js",
+			"types": "./dist/types/index.d.ts"
+		}
+	},
 	"scripts": {
-		"start": "node --loader ts-node/esm ./test/index.ts",
-		"build-esm": "tsc -p tsconfig.json && npx tsc-esm-fix ---target='dist/esm'",
+		"start": "npm run build-esm && cd ./test && npm start",
+		"build-esm": "tsc -p tsconfig-esm.json && npx tsc-esm-fix ---target='dist/esm'",
 		"build-cjs": "tsc -p tsconfig-cjs.json",
-		"build": "npm run build-esm && npm run build-cjs",
+		"build": "rimraf dist && npm run build-esm && npm run build-cjs",
 		"npm:publish": "npm run build && npm publish --access public"
 	},
 	"author": "ISMAEL1361 <ismael1361@gmail.com> (https://github.com/ismael1361)",
@@ -26,30 +44,13 @@
 		"@types/is-glob": "^4.0.4",
 		"@types/multer": "^1.4.11",
 		"@types/node": "^20.14.10",
+		"@types/resolve": "^1.20.6",
 		"cpy-cli": "^5.0.0",
 		"esm": "^3.2.25",
+		"rimraf": "^6.0.1",
 		"ts-node": "^10.9.2",
 		"tsx": "^4.16.2",
 		"typescript": "^5.5.3"
-	},
-	"browserify": {
-		"entries": "./index.ts",
-		"standalone": "MyLibrary",
-		"ignore": [
-			"some-module"
-		],
-		"insertGlobals": false,
-		"detectGlobals": true,
-		"ignoreMissing": false,
-		"debug": true,
-		"extensions": [
-			".ts",
-			".js"
-		],
-		"noParse": [
-			"large-library"
-		],
-		"externalRequireName": "require"
 	},
 	"dependencies": {
 		"@types/express": "^4.17.21",
@@ -58,7 +59,8 @@
 		"express": "^4.19.2",
 		"fn-context": "^0.2.61",
 		"is-glob": "^4.0.3",
+		"json5": "^2.2.3",
 		"multer": "^1.4.5-lts.1",
-		"node-build-engine": "^1.3.3"
+		"resolve": "^1.22.8"
 	}
 }

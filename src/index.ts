@@ -1,5 +1,5 @@
 import path from "path";
-import { PathInfo, SimpleCache, SimpleEventEmitter, RouteResponse, parseUrl, resolvePath, joinObject } from "./utils";
+import { PathInfo, SimpleCache, SimpleEventEmitter, RouteResponse, parseUrl, resolvePath, joinObject, dirName } from "./utils";
 import chokidar from "chokidar";
 import { FetchOptions, OnlyApiOptions, Headers, Route, RouteFunction, RouteRequest, FileInfo } from "./type";
 import { importModule } from "./tsUtils";
@@ -9,13 +9,16 @@ import { RouteConfigContext, RoutePathContext, RouteRequestContext } from "./con
 import express, { Request, Response } from "express";
 import { corsSync } from "./utils/Cors";
 import multer from "multer";
+import { platform } from "os";
 
 export * from "./type";
 export * from "./tools";
 
+const localDir = dirName();
+
 class OnlyApi extends SimpleEventEmitter {
 	private _ready: boolean = false;
-	private mainPath: string = __dirname;
+	private mainPath: string = localDir;
 	private pathSearchRoutes: string = "";
 	private _routes: Record<string, Route<RouteResponse>> = {};
 	private _routesPath: string[] = [];
@@ -40,21 +43,33 @@ class OnlyApi extends SimpleEventEmitter {
 
 		this.app = options instanceof express ? (options as any) : express();
 
-		const stack = (new Error().stack ?? "").split("\n");
+		const dirnames = (new Error().stack ?? "")
+			.split("\n")
+			.map((frame) => {
+				frame = frame.trim();
+				let p = /(?<path>[^\(\s]+):[0-9]+:[0-9]+/.exec(frame)?.groups?.path ?? "";
+				if (p.indexOf("file") >= 0) {
+					p = new URL(p).pathname;
+				}
+				let dirname = path.dirname(p);
+				if (dirname[0] === "/" && platform() === "win32") {
+					dirname = dirname.slice(1);
+				}
+				return dirname;
+			})
+			.filter((dirname) => {
+				return (
+					dirname &&
+					dirname.trim() !== "" &&
+					dirname.trim() !== "." &&
+					!dirname.split(/[\\\/]/gi).includes("internal") &&
+					!dirname.split(/[\\\/]/gi).includes("node_modules") &&
+					dirname.search(localDir) < 0 &&
+					dirname.search(localDir.replace(/\\/gi, "/")) < 0
+				);
+			});
 
-		const frames = stack.map((frame) => {
-			frame = frame.trim();
-			const match = frame.match(/^at (.+) \((.+)(:(\d+):(\d+))\)$/i);
-			return match ? [match[1], match[2]] : frame;
-		});
-
-		for (let i = 1; i < frames.length; i++) {
-			const currentFrame = frames[i];
-			if (path.dirname(currentFrame[1]) !== __dirname) {
-				this.mainPath = path.resolve(path.dirname(currentFrame[1]), routePath);
-				break;
-			}
-		}
+		this.mainPath = path.resolve(dirnames[0], routePath);
 
 		this.pathSearchRoutes = path.join(this.mainPath, "./**/index.{js,ts}").replace(/\\/g, "/");
 
@@ -227,6 +242,10 @@ class OnlyApi extends SimpleEventEmitter {
 			] as any[],
 		) as any;
 
+		this.app.get("/routes", (req, res) => {
+			res.json(this._routesPath);
+		});
+
 		this.app.all(...route);
 
 		this.app.all("*", (req, res) => {
@@ -250,6 +269,8 @@ class OnlyApi extends SimpleEventEmitter {
 		const exports: Route<RouteResponse> = await importModule(routePath, true, () => {
 			this.addRoute(routePath);
 		});
+
+		console.log(exports);
 
 		if (this._routesCache.has(p)) {
 			this._routesCache.get(p)?.applyOptions(exports.cacheOptions);

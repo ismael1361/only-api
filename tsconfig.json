@@ -9,13 +9,12 @@
             "ES2015"
         ],
         "target": "ESNext",
-        "module": "commonjs",
+        "module": "CommonJS",
         "moduleResolution": "node",
         "listEmittedFiles": false,
         "declaration": true,
         "declarationMap": true,
         "sourceMap": true,
-        "forceConsistentCasingInFileNames": true,
         "strict": true,
         "noImplicitAny": false,
         "skipLibCheck": true,
@@ -26,12 +25,10 @@
         "removeComments": false,
         "allowJs": true,
         "checkJs": false,
-        "allowSyntheticDefaultImports": true,
         "noFallthroughCasesInSwitch": true,
         "outDir": "./dist/esm",
         "rootDir": "./src",
-        "baseUrl": ".",
-        "declarationDir": "./dist/types"
+        "baseUrl": "."
     },
     "compileOnSave": false,
     "include": [
