@@ -1,6 +1,8 @@
 import { RouteResponse, RouteRequest, fetchRoute, getUrlOrigin, cacheControl, requiresAccess, corsOringin } from "only-api";
 import { Users } from "controlers";
 
+console.log(Users);
+
 export const get = async (req: RouteRequest<{}, "id", "date" | "q">) => {
 	corsOringin("*");
 

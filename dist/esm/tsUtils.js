@@ -5,9 +5,6 @@ import * as colorette from "colorette";
 import { PathInfo } from "./utils/index.js";
 import * as vm from "vm";
 import JSON5 from "json5";
-import { createRequire } from "module";
-import { pathToFileURL } from "url";
-import resolve from "resolve";
 const getTSCompilerOptions = (filePath) => {
     let options = {};
     let tsconfigFile = filePath;
@@ -81,16 +78,32 @@ const validateTypeScript = (filePath) => {
     }
     return fileContent;
 };
-const resolveModule = (specifier, baseUrl, paths) => {
-    if (baseUrl && paths) {
-        const absoluteBaseUrl = path.resolve(baseUrl);
+const resolveModule = (specifier, actualPath, baseUrl, paths) => {
+    const isExists = (p) => {
+        const paths = ["", ".js", ".ts", ".json", ".node", ".cjs", ".mjs", ".jsx", ".tsx", ".mts"]
+            .map((ext) => p + ext)
+            .concat(["index.js", "index.ts", "index.json", "index.node", "index.cjs", "index.mjs", "index.jsx", "index.tsx", "index.mts"].map((ext) => path.resolve(p, ext)));
+        return paths.find((p) => fs.existsSync(p));
+    };
+    const resolvedPath = isExists(path.resolve(actualPath, specifier));
+    if (resolvedPath) {
+        return resolvedPath;
+    }
+    if (!baseUrl) {
+        return specifier;
+    }
+    const absoluteBaseUrl = path.resolve(baseUrl);
+    if (fs.existsSync(path.resolve(absoluteBaseUrl, specifier))) {
+        return path.resolve(absoluteBaseUrl, specifier);
+    }
+    if (paths) {
         for (const [key, values] of Object.entries(paths)) {
             const pattern = new RegExp(`^${key.replace(/\*/g, "(.*)")}$`);
             const match = specifier.match(pattern);
             if (match) {
                 for (const value of values) {
-                    const resolvedPath = path.join(absoluteBaseUrl, value.replace(/\*/g, match[1]));
-                    if (fs.existsSync(resolvedPath)) {
+                    const resolvedPath = isExists(path.join(absoluteBaseUrl, value.replace(/\*/g, match[1])));
+                    if (resolvedPath) {
                         return resolvedPath;
                     }
                 }
@@ -106,7 +119,7 @@ const compileTypeScript = (filePath) => {
         // Opções de compilação do TypeScript
         const compilerOptions = getTSCompilerOptions(filePath);
         // Compilar o código TypeScript
-        const { outputText, sourceMapText } = ts.transpileModule(fileContent, {
+        let { outputText, sourceMapText } = ts.transpileModule(fileContent, {
             compilerOptions: { ...compilerOptions, sourceMap: true },
             fileName: filePath,
             transformers: {
@@ -116,7 +129,7 @@ const compileTypeScript = (filePath) => {
                             function visitor(node) {
                                 if (ts.isImportDeclaration(node)) {
                                     const moduleSpecifier = node.moduleSpecifier.text;
-                                    const resolvedModule = resolveModule(moduleSpecifier, compilerOptions.baseUrl, compilerOptions.paths);
+                                    const resolvedModule = resolveModule(moduleSpecifier, path.dirname(filePath), compilerOptions.baseUrl, compilerOptions.paths);
                                     return ts.factory.updateImportDeclaration(node, node.modifiers, node.importClause, ts.factory.createStringLiteral(resolvedModule), node.assertClause);
                                 }
                                 return ts.visitEachChild(node, visitor, context);
@@ -127,39 +140,41 @@ const compileTypeScript = (filePath) => {
                 ],
             },
         });
+        outputText = `(async function(){${outputText.replace(/\n\/\/\# sourceMappingURL\=(.+)$/gi, "").replace(/(.)require(.{1,10})/gi, (a, b, c) => {
+            if (c.trim().startsWith("(") && !/[a-z_]/gi.test(b)) {
+                return `${b}await require${c}`;
+            }
+            return a;
+        })}
+        moduleResolve();})();`;
         // Retorna o código JavaScript transpilado
-        return `${outputText.replace(/\n\/\/\# sourceMappingURL\=(.+)$/gi, "")}\n//# sourceMappingURL=data:application/json;base64,${Buffer.from(sourceMapText ?? "").toString("base64")}`;
+        return `${outputText}\n//# sourceMappingURL=data:application/json;base64,${Buffer.from(sourceMapText ?? "").toString("base64")}`;
     }
     catch { }
     return "";
 };
 const cacheModules = new Map();
 const observeModules = new Map();
-const getRequire = (p) => {
-    console.log(p);
+const getRequire = async (p) => {
     try {
         // Tenta carregar usando require
         return require(p);
     }
     catch (e1) {
         try {
-            // Converte para caminho absoluto
-            const absolutePath = path.isAbsolute(p) ? p : path.resolve(process.cwd(), p);
-            // Cria um require a partir da URL do módulo atual
-            const moduleURL = pathToFileURL(absolutePath).href;
-            const customRequire = createRequire(moduleURL);
-            return customRequire(absolutePath);
+            return await import(p);
         }
         catch (e2) {
-            return {};
+            throw new Error(`Cannot find module '${p}': ${e2}`);
         }
     }
 };
 const createCustomRequire = (filePath, onMutate) => {
     const baseDir = path.dirname(filePath);
-    return (modulePath) => {
-        modulePath = resolve.sync(modulePath, { basedir: baseDir });
+    return async (modulePath) => {
         try {
+            const compilerOptions = getTSCompilerOptions(filePath);
+            modulePath = resolveModule(modulePath, baseDir, compilerOptions.baseUrl, compilerOptions.paths);
             let absolutePath = fs.existsSync(modulePath)
                 ? modulePath
                 : fs.existsSync(path.join(baseDir, modulePath))
@@ -177,14 +192,14 @@ const createCustomRequire = (filePath, onMutate) => {
                     absolutePath = path.resolve(absolutePath, posibleFiles);
                 }
             }
-            const updateImport = () => {
-                importModule(absolutePath, true, updateImport);
+            const updateImport = async () => {
+                await importModule(absolutePath, true, updateImport);
                 const callbacks = Object.values(observeModules.get(absolutePath)?.modules ?? {});
                 for (const callback of callbacks) {
                     callback();
                 }
             };
-            const module = importModule(absolutePath, false, updateImport);
+            const module = await importModule(absolutePath, false, updateImport);
             const observer = observeModules.get(absolutePath) ?? {
                 event: undefined,
                 modules: {},
@@ -205,11 +220,11 @@ const createCustomRequire = (filePath, onMutate) => {
             return module;
         }
         catch (err) {
-            return getRequire(modulePath);
+            return await getRequire(modulePath);
         }
     };
 };
-const getGlobalContext = (filePath, exports, onMutateImports) => {
+const getGlobalContext = (filePath, exports, resolve, onMutateImports) => {
     const globalContext = Object.create(global);
     globalContext["`${process.platform === 'win32' ? '' : '/'}${/file:\/{2,3}(.+)/.exec(import.meta.url)[1]}`"] = filePath;
     globalContext["`${process.platform === 'win32' ? '' : '/'}${/file:\/{2,3}(.+)\/[^/]/.exec(import.meta.url)[1]}`"] = path.dirname(filePath);
@@ -221,9 +236,10 @@ const getGlobalContext = (filePath, exports, onMutateImports) => {
     globalContext.process = process;
     globalContext.require = createCustomRequire(filePath, onMutateImports);
     globalContext.exports = exports;
+    globalContext.moduleResolve = resolve;
     return globalContext;
 };
-export const importModule = (filePath, ignoreCache = false, onMutateImports) => {
+export const importModule = async (filePath, ignoreCache = false, onMutateImports) => {
     if (fs.existsSync(filePath)) {
         if (fs.statSync(filePath).isDirectory()) {
             const posibleFiles = fs.readdirSync(filePath).find((file) => {
@@ -238,7 +254,7 @@ export const importModule = (filePath, ignoreCache = false, onMutateImports) => 
         }
     }
     else {
-        return getRequire(filePath);
+        return await getRequire(filePath);
     }
     if (cacheModules.has(filePath) && !ignoreCache) {
         return cacheModules.get(filePath);
@@ -246,9 +262,11 @@ export const importModule = (filePath, ignoreCache = false, onMutateImports) => 
     const compiledCode = compileTypeScript(filePath);
     const exports = {};
     // console.log("compiledCode", compiledCode);
-    const script = new vm.Script(compiledCode, { filename: filePath });
-    const context = vm.createContext(getGlobalContext(filePath, exports, onMutateImports));
-    script.runInContext(context);
+    await new Promise((resolve) => {
+        const script = new vm.Script(compiledCode, { filename: filePath });
+        const context = vm.createContext(getGlobalContext(filePath, exports, resolve, onMutateImports));
+        script.runInContext(context);
+    });
     cacheModules.set(filePath, exports);
     return exports;
 };
