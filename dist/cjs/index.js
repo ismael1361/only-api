@@ -133,7 +133,7 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
         const route = Array.prototype.concat.apply([], [
             "/*",
             this.options.middlewares,
-            async (req, res) => {
+            async (req, res, next) => {
                 try {
                     const allowed = [];
                     allowed.push((0, Cors_1.corsSync)({
@@ -154,13 +154,17 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
                 }
                 const route = req.originalUrl;
                 const method = req.method;
+                const findRoute = this.findRouteBy(route);
+                if (!findRoute) {
+                    return next();
+                }
                 const response = await this.fetchRoute(route, {
                     method,
                     headers: req.headers,
-                    params: req.params,
+                    params: {},
                     query: req.query,
                     body: req.body,
-                }, req, res);
+                }, req, res, next);
                 try {
                     if (res.finished || res.headersSent || res.destroyed) {
                         return;
@@ -233,7 +237,6 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
         const exports = await (0, tsUtils_1.importModule)(routePath, true, () => {
             this.addRoute(routePath);
         });
-        console.log(exports);
         if (this._routesCache.has(p)) {
             this._routesCache.get(p)?.applyOptions(exports.cacheOptions);
         }
@@ -253,11 +256,24 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
         return await this.addRoute(routePath);
     }
     async removeRoute(routePath) {
-        const path = routePath.replace(/\\/g, "/").replace(this.mainPath.replace(/\\/g, "/"), "").replace("/index.ts", "").replace("/index.js", "");
-        delete this._routes[path];
+        const p = routePath
+            .replace(/\\/g, "/")
+            .replace(this.mainPath.replace(/\\/g, "/"), "")
+            .replace("/index.ts", "")
+            .replace("/index.js", "")
+            .replace(/(\/{1,})\[/gi, "[");
+        delete this._routes[p];
         this._routesPath = Object.keys(this._routes);
-        this._routesCache.delete(path);
-        (0, log_1.logTrace)("warn", `Rota "${path}" foi removido!`, routePath);
+        this._routesCache.delete(p);
+        (0, log_1.logTrace)("warn", `Rota "${p}" foi removido!`, routePath);
+    }
+    findRouteBy(routePath, base = "") {
+        const { pathname: pn } = (0, utils_1.parseUrl)(routePath);
+        const pathname = (0, utils_1.resolvePath)(base, pn);
+        const route = pathname.replace(/^\//gi, "").replace(/\/$/gi, "");
+        return this._routesPath.find((path) => {
+            return utils_1.PathInfo.get(path).equals(route);
+        });
     }
     async fetchRoute(route, options = {
         method: "GET",
@@ -267,7 +283,7 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
         query: {},
         files: [],
         file: undefined,
-    }, request, response) {
+    }, request, response, next) {
         const initialyTime = Date.now();
         try {
             await new Promise((resolve) => setTimeout(resolve, 0));
@@ -275,9 +291,7 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
             const { pathname: pn, searchParams } = (0, utils_1.parseUrl)(route);
             const pathname = (0, utils_1.resolvePath)(localPath, pn);
             const routePath = pathname.replace(/^\//gi, "").replace(/\/$/gi, "");
-            const findRoute = this._routesPath.find((path) => {
-                return utils_1.PathInfo.get(path).equals(routePath);
-            });
+            const findRoute = this.findRouteBy(route, localPath);
             if (!findRoute) {
                 throw new Error(`"/${routePath}": Route not found!`);
             }
@@ -293,7 +307,9 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
                             ? "delete"
                             : "all" in moduleRoute
                                 ? "all"
-                                : null;
+                                : "default" in moduleRoute
+                                    ? "default"
+                                    : null;
             if (!methodBy || typeof moduleRoute[methodBy] !== "function") {
                 throw new Error(`"/${routePath}": Method not allowed!`);
             }
@@ -358,13 +374,46 @@ class OnlyApi extends utils_1.SimpleEventEmitter {
                     };
                     let response;
                     for (let i = 0; i < callbacks.length; i++) {
-                        let continueToNext = false;
-                        const next = () => {
-                            continueToNext = true;
-                        };
-                        response = await Promise.race([callbacks[i](req, next)]);
-                        if (!continueToNext) {
-                            break;
+                        if (typeof callbacks[i] !== "function") {
+                            continue;
+                        }
+                        response = await new Promise(async (res, rej) => {
+                            let resolved = false;
+                            const resolve = (value) => {
+                                if (resolved) {
+                                    return;
+                                }
+                                resolved = true;
+                                res(value);
+                            };
+                            const reject = (e) => {
+                                if (resolved) {
+                                    return;
+                                }
+                                resolved = true;
+                                rej(e);
+                            };
+                            const next = (toContinue = true) => {
+                                if (typeof toContinue === "boolean") {
+                                    return toContinue ? resolve(new utils_1.RouteResponse({ code: 200 })) : reject(new Error("Middleware not allowed!"));
+                                }
+                                if (toContinue instanceof Error) {
+                                    return reject(toContinue);
+                                }
+                                return resolve(new utils_1.RouteResponse({ code: 200 }));
+                            };
+                            const result = await Promise.race([callbacks[i](req, next)]).catch((e) => {
+                                return new Error(e);
+                            });
+                            if (result instanceof utils_1.RouteResponse) {
+                                return resolve(result);
+                            }
+                            if (result instanceof Error) {
+                                return reject(result);
+                            }
+                        });
+                        if (!response) {
+                            throw new Error("Middleware not allowed!");
                         }
                         await new Promise((resolve) => setTimeout(resolve, 0));
                     }

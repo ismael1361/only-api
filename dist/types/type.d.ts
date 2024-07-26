@@ -99,7 +99,8 @@ export interface RouteRequest<B extends Object = Record<string, any>, P extends 
     files: FileInfo[];
     file?: FileInfo;
 }
-export type RouteFunction<R = any> = (req: RouteRequest, next: () => void) => R | Promise<R>;
+export type NextFunction = (error?: Error | boolean) => void;
+export type RouteFunction<R = any> = (req: RouteRequest, next: NextFunction) => R | Promise<R>;
 export interface Route<R = any> {
     all?: RouteFunction<R> | RouteFunction<R>[];
     get?: RouteFunction<R> | RouteFunction<R>[];

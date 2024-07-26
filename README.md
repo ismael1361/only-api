@@ -16,17 +16,17 @@ routes/
             index.ts
     posts/
         index.js
-        [*]/
+        [id]/
             index.ts
 ```
 
-Neste exemplo, o diretório `users` contém um arquivo `index.js` que define a rota principal `/users`, enquanto o diretório `$id` contém um arquivo `index.ts` que define a rota `/users/:id`, o diretório `posts` contém um arquivo `index.js` que define a rota principal `/posts`, e o diretório `[*]` contém um arquivo `index.ts` que define a rota `/posts[*]`. Dessa forma, as rotas são organizadas de acordo com a estrutura de pastas, facilitando a navegação e a manutenção do código. Ou seja:
+Neste exemplo, o diretório `users` contém um arquivo `index.js` que define a rota principal `/users`, enquanto o diretório `$id` contém um arquivo `index.ts` que define a rota `/users/:id`, o diretório `posts` contém um arquivo `index.js` que define a rota principal `/posts`, e o diretório `[id]` contém um arquivo `index.ts` que define a rota `/posts[id]`. Dessa forma, as rotas são organizadas de acordo com a estrutura de pastas, facilitando a navegação e a manutenção do código. Ou seja:
 
 ```
 routes/users
 routes/users/$id
 routes/posts
-routes/posts[*]
+routes/posts[id]
 ```
 
 Além disso, o `only-api` elimina a necessidade de pacotes adicionais, como o `nodemon`, que são comumente usados para monitorar mudanças em arquivos e reiniciar o projeto automaticamente. O `only-api` incorpora mecanismos internos que gerenciam essas mudanças de forma eficiente, proporcionando um ambiente de desenvolvimento mais ágil e menos propenso a erros.
@@ -40,17 +40,29 @@ O `only-api` também oferece funcionalidades úteis para uso em rotas, como a ca
 - [only-api](#only-api)
   - [Instalação](#instalação)
   - [Uso](#uso)
-    - [`RouteResponse`](#routeresponse)
+    - [`Método HTTP` - Métodos de Rota](#método-http---métodos-de-rota)
+      - [`GET` - Recuperar Dados](#get---recuperar-dados)
+      - [`POST` - Enviar Dados](#post---enviar-dados)
+      - [`PUT` - Atualizar Dados](#put---atualizar-dados)
+      - [`DELETE` - Excluir Dados](#delete---excluir-dados)
+      - [`ALL` - Aceitar Qualquer Método HTTP](#all---aceitar-qualquer-método-http)
+      - [`middleware` - Middleware Global](#middleware---middleware-global)
+      - [`default` - Método `ALL`](#default---método-all)
+    - [`RouteResponse` - Resposta da Rota](#routeresponse---resposta-da-rota)
       - [`Content-Type` - Tipos de Conteúdo](#content-type---tipos-de-conteúdo)
       - [`ReadableStream` - Fluxo de Leitura](#readablestream---fluxo-de-leitura)
-    - [`RouteRequest`](#routerequest)
+    - [`RouteRequest` - Requisição da Rota](#routerequest---requisição-da-rota)
+    - [`curinga` - Parâmetros de Rota Dinâmicos](#curinga---parâmetros-de-rota-dinâmicos)
+      - [`$` - Curinga de Definição de Parâmetros](#---curinga-de-definição-de-parâmetros)
+      - [`[]` - Curinga de Definição de Parâmetros de Lista](#---curinga-de-definição-de-parâmetros-de-lista)
+    - [`Middlewares` - Middlewares Personalizados](#middlewares---middlewares-personalizados)
   - [Funções Especiais](#funções-especiais)
-    - [`corsOringin`](#corsoringin)
-    - [`requiresAccess`](#requiresaccess)
-    - [`getUrlOrigin`](#geturlorigin)
-    - [`cacheControl`](#cachecontrol)
-    - [`getCached`](#getcached)
-    - [`setCache`](#setcache)
+    - [`corsOringin` - Configuração do CORS](#corsoringin---configuração-do-cors)
+    - [`requiresAccess` - Middleware de Autenticação modo www-authenticate (Basic Auth)](#requiresaccess---middleware-de-autenticação-modo-www-authenticate-basic-auth)
+    - [`getUrlOrigin` - Obter a Origem da URL](#geturlorigin---obter-a-origem-da-url)
+    - [`cacheControl` - Armazenamento da Rota em Cache](#cachecontrol---armazenamento-da-rota-em-cache)
+    - [`getCached` - Obter Resposta Armazenada em Cache](#getcached---obter-resposta-armazenada-em-cache)
+    - [`setCache` - Armazenar Valor em Cache](#setcache---armazenar-valor-em-cache)
 
 ## Instalação
 
@@ -120,9 +132,237 @@ export const delete = (req) => {
 };
 ```
 
-### `RouteResponse`
+### `Método HTTP` - Métodos de Rota
 
-No exemplo anterior, observe que cada função exportada deve corresponder a um método HTTP específico (por exemplo, `get`, `post`, `put`, `delete`, `all`) e retornar um objeto `RouteResponse` que define a resposta da rota. O objeto `RouteResponse` possui os seguintes métodos estáticos disponíveis:
+No exemplo anterior, observe que cada função exportada deve corresponder a um método HTTP específico (por exemplo, `get`, `post`, `put`, `delete`, `all`) e retornar um objeto `RouteResponse` que define a resposta da rota. Se caso definir uma função ou um array de funções como `default`, será tratado como método `all`.
+
+Por padrão, o `only-api` suporta os seguintes métodos HTTP:
+
+- `get` [*Function|Function[]*]: o método `GET` é usado para recuperar dados de um servidor
+- `post` [*Function|Function[]*]: o método `POST` é usado para enviar dados para um servidor
+- `put` [*Function|Function[]*]: o método `PUT` é usado para atualizar dados em um servidor
+- `delete` [*Function|Function[]*]: o método `DELETE` é usado para excluir dados de um servidor
+- `all` [*Function|Function[]*]: o método `ALL` é usado para aceitar qualquer método HTTP
+- `middleware` [*Function[]*]: exportar uma função ou um array de funções como `middleware` será tratado como middleware global da rota específica, ou seja, será válido para todos os métodos da rota e será executado antes de todos os métodos da rota
+- `default` [*Function|Function[]*]: exportar uma função ou um array de funções como `default` será tratado como método `ALL`
+
+#### `GET` - Recuperar Dados
+
+```ts
+// routes/users/index.ts
+import { RouteResponse } from 'only-api';
+
+export const get = (req) => {
+    return RouteResponse.text("GET /users");
+};
+```
+
+Exemplo com `middleware`:
+
+```ts
+// routes/users/index.ts
+import { RouteResponse } from 'only-api';
+
+export const get = [(req) => {
+    console.log("Middleware executado!");
+    return true;
+}, (req) => {
+    return RouteResponse.json({ message: "GET /users" });
+}];
+```
+
+#### `POST` - Enviar Dados
+
+```ts
+// routes/users/index.ts
+import { RouteResponse } from 'only-api';
+
+export const post = (req) => {
+    return RouteResponse.text("POST /users");
+};
+```
+
+Exemplo com `middleware`:
+
+```ts
+// routes/users/index.ts
+import { RouteResponse } from 'only-api';
+
+export const post = [(req) => {
+    console.log("Middleware executado!");
+    return true;
+}, (req) => {
+    return RouteResponse.json({ message: "POST /users" });
+}];
+```
+
+#### `PUT` - Atualizar Dados
+
+```ts
+// routes/users/index.ts
+import { RouteResponse } from 'only-api';
+
+export const put = (req) => {
+    return RouteResponse.text("PUT /users");
+};
+```
+
+Exemplo com `middleware`:
+
+```ts
+// routes/users/index.ts
+import { RouteResponse } from 'only-api';
+
+export const put = [(req) => {
+    console.log("Middleware executado!");
+    return true;
+}, (req) => {
+    return RouteResponse.json({ message: "PUT /users" });
+}];
+```
+
+#### `DELETE` - Excluir Dados
+
+```ts
+// routes/users/index.ts
+import { RouteResponse } from 'only-api';
+
+export const delete = (req) => {
+    return RouteResponse.text("DELETE /users");
+};
+```
+
+Exemplo com `middleware`:
+
+```ts
+// routes/users/index.ts
+import { RouteResponse } from 'only-api';
+
+export const delete = [(req) => {
+    console.log("Middleware executado!");
+    return true;
+}, (req) => {
+    return RouteResponse.json({ message: "DELETE /users" });
+}];
+```
+
+#### `ALL` - Aceitar Qualquer Método HTTP
+
+```ts
+// routes/users/index.ts
+import { RouteResponse } from 'only-api';
+
+export const default = (req) => {
+    return RouteResponse.text("ALL /users");
+};
+```
+
+Exemplo com `middleware`:
+
+```ts
+// routes/users/index.ts
+import { RouteResponse } from 'only-api';
+
+export const default = [(req) => {
+    console.log("Middleware executado!");
+    return true;
+}, (req) => {
+    return RouteResponse.json({ message: "ALL /users" });
+}];
+```
+
+#### `middleware` - Middleware Global
+
+```ts
+// routes/users/index.ts
+import { RouteResponse } from 'only-api';
+
+export const middleware = (req) => {
+    console.log("Middleware executado!");
+    return true;
+};
+
+export const get = (req) => {
+    return RouteResponse.text("GET /users");
+};
+```
+
+Por exemplo middleware global com erro:
+
+```ts
+// routes/users/index.ts
+import { RouteResponse } from 'only-api';
+
+export const middleware = (req) => {
+    console.log("Middleware executado com erro!");
+    return new Error("Erro");
+};
+
+export const get = (req) => {
+    return RouteResponse.text("GET /users");
+};
+```
+
+Por exemplo middleware global com `next`:
+
+```ts
+// routes/users/index.ts
+import { RouteResponse } from 'only-api';
+
+export const middleware = (req, next) => {
+    console.log("Middleware executado com sucesso!");
+    next();
+};
+
+export const get = (req) => {
+    return RouteResponse.text("GET /users");
+};
+```
+
+Por exemplo middleware global com `next` e erro:
+
+```ts
+// routes/users/index.ts
+import { RouteResponse } from 'only-api';
+
+export const middleware = (req, next) => {
+    console.log("Middleware executado com erro!");
+    next(new Error("Erro"));
+};
+
+export const get = (req) => {
+    return RouteResponse.text("GET /users");
+};
+```
+
+#### `default` - Método `ALL`
+
+```ts
+// routes/users/index.ts
+import { RouteResponse } from 'only-api';
+
+export default (req) => {
+    return RouteResponse.text("ALL /users");
+};
+```
+
+Por exemplo com `middleware`:
+
+```ts
+// routes/users/index.ts
+import { RouteResponse } from 'only-api';
+
+export default [(req) => {
+    console.log("Middleware executado!");
+    return true;
+}, (req) => {
+    return RouteResponse.json({ message: "ALL /users" });
+}];
+```
+
+### `RouteResponse` - Resposta da Rota
+
+é obrigatório que as rotas retorne uma resposta utilizando o objeto `RouteResponse` para definir o comportamento da rota. O objeto `RouteResponse` é responsável por gerar a resposta da rota com base nos dados fornecidos. Ele fornece métodos estáticos para retornar respostas de texto, JSON, HTML, buffer, stream, erro e personalizadas, bem como definir o código de status da resposta. Se caso uma rota retornar um valor qualquer, será tratado como erro e resultará em uma resposta de erro com o código de status `500` e a mensagem de erro correspondente. O objeto `RouteResponse` possui os seguintes métodos estáticos disponíveis:
 
 - `json` [*RouteResponse*]: retorna uma resposta JSON com o corpo fornecido
 - `text` [*RouteResponse*]: retorna uma resposta de texto com o corpo fornecido
@@ -233,7 +473,7 @@ export const delete = (req) => {
 };
 ```
 
-### `RouteRequest`
+### `RouteRequest` - Requisição da Rota
 
 O Request passado para cada função é bastante limitado, isso pensando em segurança e simplicidade. Para acessar os dados do Request, basta acessar o primeiro parâmetro da função. Para acessar os dados do Response, basta retornar um objeto `RouteResponse`, como mostrado anteriormente. A estrutura do Request é a seguinte:
 
@@ -281,6 +521,142 @@ export const get = (req: RouteRequest<{}, "id", "date"|"q">) => {
 };
 ```
 
+### `curinga` - Parâmetros de Rota Dinâmicos
+
+O `only-api` suporta parâmetros de rota dinâmicos, que podem ser definidos entre colchetes `[]` no diretório de rota. Por exemplo, o diretório `[id]` define um parâmetro de rota dinâmico chamado `id`. O valor do parâmetro de rota dinâmico é acessível através do objeto `params` do Request. Por exemplo:
+
+```ts
+// routes/users/[id]/index.ts -> routes/users[id]
+import { RouteRequest, RouteResponse } from 'only-api';
+
+export const get = (req: RouteRequest) => {
+    const { id } = req.params;
+    return RouteResponse.json({ message: `GET /users/${id}` });
+};
+```
+
+#### `$` - Curinga de Definição de Parâmetros
+
+O curinga `$` é um curinga especial que permite definir parâmetros de rota dinâmicos com base no nome do diretório. Por exemplo, o diretório `$id` define um parâmetro de rota dinâmico chamado `id`. Por exemplo:
+
+```ts
+// routes/users/$id/index.ts -> routes/users/$id
+import { RouteRequest, RouteResponse } from 'only-api';
+
+export const get = (req: RouteRequest) => {
+    const { id } = req.params;
+    return RouteResponse.json({ message: `GET /users/${id}` });
+};
+```
+
+* Realizando uma requisição `GET /users/123` para a rota definida como `routes/users/$id`:
+  * O valor de `id` será `123`.
+* Realizando uma requisição `GET /users/123/post/456` para a rota definida como `routes/users/$user/post/$id`:
+  * O valor de `user` será `123`.
+  * O valor de `id` será `456`.
+
+#### `[]` - Curinga de Definição de Parâmetros de Lista
+
+O curinga `[]` é um curinga especial que permite definir index de listagem, como por exemplo, `users[0]`, `users[1]`, `users[2]`, etc. Por exemplo:
+
+```ts
+// routes/users/[index]/index.ts -> routes/users[0]
+
+import { RouteRequest, RouteResponse } from 'only-api';
+
+export const get = (req: RouteRequest) => {
+    const { index } = req.params;
+    return RouteResponse.json({ message: `GET /users/${0}` });
+};
+```
+
+> **Nota**: O curinga `[]`, por servir como index de listagem, só possível usa-lo para números inteiros. Ou seja, `users[0]`, `users[1]`, `users[2]`, etc. Não é possível usar `users[0.1]`, `users["nome"]`, `users[true]`, etc.
+
+* Realizando uma requisição `GET /users[0]` para a rota definida como `routes/users[index]`:
+  * O valor de `index` será `0`.
+* Realizando uma requisição `GET /users[0]` para a rota definida como `routes/users[]`:
+  * O valor de `0` será `0`.
+* Realizando uma requisição `GET /users/123/post[456]` para a rota definida como `routes/users/$user/post[id]`:
+  * O valor de `user` será `123`.
+  * O valor de `id` será `456`.
+* Realizando uma requisição `GET /users/123/post[456]` para a rota definida como `routes/users/$user/post[]`:
+  * O valor de `user` será `123`.
+  * O valor de `1` será `456`.
+* Realizando uma requisição `GET /users[123]/post[456]` para a rota definida como `routes/users[user]/post[id]`:
+  * O valor de `user` será `123`.
+  * O valor de `id` será `456`.
+* Realizando uma requisição `GET /users[123]/post[456]` para a rota definida como `routes/users[]/post[]`:
+  * O valor de `0` será `123`.
+  * O valor de `1` será `456`.
+
+### `Middlewares` - Middlewares Personalizados
+
+Os middlewares são funções que são executadas antes de cada rota. Eles podem ser usados para adicionar funcionalidades adicionais às rotas, como autenticação, validação de parâmetros, tratamento de erros, entre outros. Por exemplo:
+
+```ts
+// routes/users/index.ts
+import { RouteResponse } from 'only-api';
+
+export const get = [(req)=>{
+    console.log("Middleware executado!");
+    return true;
+}, (req) => {
+    return RouteResponse.json({ message: "GET /users" });
+}];
+```
+
+É possível exportar uma função ou lista de funções chamada `middleware` que será executada antes de todas os metodos da rota:
+
+```ts
+// routes/users/$id/index.ts
+import { RouteResponse } from 'only-api';
+
+export const middleware = [(req) => {
+    console.log("Middleware executado com sucesso!");
+    return true;
+}, (req) => {
+    console.log("Middleware 2 executado com falha!");
+    return false;
+}, (req) => {
+    console.log("Middleware 3 executado com falha!");
+    return new Error("Erro");
+}, (req, next)=>{
+    console.log("Middleware 4 executado com sucesso!");
+    next();
+}, (req, next)=>{
+    console.log("Middleware 5 executado com falha!");
+    next(false);
+}, (req, next)=>{
+    console.log("Middleware 6 executado com falha!");
+    next(new Error("Erro"));
+}];
+
+export const get = (req) => {
+    return RouteResponse.json({ message: "GET /users" });
+};
+```
+
+Os middlewares podem ser definidos como funções individuais ou como uma lista de funções. Eles podem retornar um valor booleano ou uma `Promise` que resolve em um valor booleano. Se um middleware retornar `false`, a rota atual não será executada e a resposta será enviada diretamente ao cliente. Se um middleware retornar `true`, a rota atual será executada normalmente. Se um middleware retornar uma `Promise` que rejeita, a resposta será enviada com o código de status `500` e a mensagem de erro correspondente.
+
+Observe que a lógica dos middlewares, como demonstrados nos exemplos anteriores, são bastante limitados. Isso foi feito pensando em segurança e simplicidade. Para lógicas mais complexas, para utilizar diretamento no Express, por exemplo, é possível definir os middlewares no objeto de configuração do `only-api`, que pode ser uma função ou uma array de funções. Por exemplo:
+
+```ts
+import onlyApi from 'only-api';
+
+const app = onlyApi("./routes", {
+    port: 3000,
+    host: "localhost",
+    middlewares: [
+        (req, res, next) => {
+            console.log("Middleware executado!");
+            next();
+        }
+    ]
+});
+```
+
+> **Nota**: É importante notar que, ao definir middlewares no objeto de configuração, eles serão executados antes de quaisquer rotas, independentemente do método HTTP. Isso pode ser útil para adicionar funcionalidades globais ao servidor, como autenticação, validação de parâmetros, tratamento de erros, entre outros. Utilize com cuidado.
+
 ## Funções Especiais
 
 O `only-api` oferece algumas funções especiais que podem ser utilizadas para personalizar o comportamento das rotas de forma flexível e dinâmica. Essas funções podem ser exportadas em qualquer arquivo de rota (somente nas rotas) e deverão ser chamadas entro da função de rota desejada. Por exemplo:
@@ -298,7 +674,7 @@ export const get = (req) => {
 
 As funções especiais disponíveis são:
 
-### `corsOringin`
+### `corsOringin` - Configuração do CORS
 
 A função `corsOringin` permite definir o domínio permitido para acessar a rota atual. Ele responde um `throws` caso o domínio não seja permitido. Por exemplo:
 
@@ -325,9 +701,9 @@ Sua tipagem é a seguinte:
 const corsOringin: (origin: string | string[], exposeHeaders?: string | string[]) => void;
 ```
 
-### `requiresAccess`
+### `requiresAccess` - Middleware de Autenticação modo www-authenticate (Basic Auth)
 
-A função `requiresAccess` permite definir um middleware de autenticação para a rota atual. Ele responde um `throws` caso o usuário não esteja autenticado. Por exemplo:
+A função `requiresAccess` permite definir um middleware de autenticação `www-authenticate (Basic Auth)` para a rota atual. Ele responde um `throws` caso o usuário não esteja autenticado. Por exemplo:
 
 ```ts
 // routes/users/index.ts
@@ -351,7 +727,7 @@ Sua tipagem é a seguinte:
 const requiresAccess: (users: Record<string, string | string[]>) => void
 ```
 
-### `getUrlOrigin`
+### `getUrlOrigin` - Obter a Origem da URL
 
 A função `getUrlOrigin` permite obter a origem da URL atual, respeitando o curinga. Por exemplo:
 
@@ -376,7 +752,7 @@ Sua tipagem é a seguinte:
 const getUrlOrigin: () => string;
 ```
 
-### `cacheControl`
+### `cacheControl` - Armazenamento da Rota em Cache
 
 A função `cacheControl` permite personalizar o armazenamento em cache da resposta da rota atual. Por exemplo:
 
@@ -403,7 +779,7 @@ Sua tipagem é a seguinte:
 const cacheControl: (duration: number, id?: string) => void;
 ```
 
-### `getCached`
+### `getCached` - Obter Resposta Armazenada em Cache
 
 A função `getCached` permite obter a resposta armazenada em cache da rota atual. Por exemplo:
 
@@ -431,7 +807,7 @@ Sua tipagem é a seguinte:
 const getCached: <T = any>(id?: string) => T | undefined;
 ```
 
-### `setCache`
+### `setCache` - Armazenar Valor em Cache
 
 A função `setCache` permite armazenar, de forma personalizada, um valor em cache. Por exemplo:
 

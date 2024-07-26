@@ -181,7 +181,7 @@ class OnlyApi extends SimpleEventEmitter {
 						{
 							method,
 							headers: req.headers as any,
-							params: req.params as any,
+							params: {},
 							query: req.query as any,
 							body: req.body as any,
 						},
@@ -298,11 +298,16 @@ class OnlyApi extends SimpleEventEmitter {
 	}
 
 	private async removeRoute(routePath: string) {
-		const path = routePath.replace(/\\/g, "/").replace(this.mainPath.replace(/\\/g, "/"), "").replace("/index.ts", "").replace("/index.js", "");
-		delete this._routes[path];
+		const p = routePath
+			.replace(/\\/g, "/")
+			.replace(this.mainPath.replace(/\\/g, "/"), "")
+			.replace("/index.ts", "")
+			.replace("/index.js", "")
+			.replace(/(\/{1,})\[/gi, "[");
+		delete this._routes[p];
 		this._routesPath = Object.keys(this._routes);
-		this._routesCache.delete(path);
-		logTrace("warn", `Rota "${path}" foi removido!`, routePath);
+		this._routesCache.delete(p);
+		logTrace("warn", `Rota "${p}" foi removido!`, routePath);
 	}
 
 	findRouteBy(routePath: string, base: string = ""): string | undefined {
@@ -362,6 +367,8 @@ class OnlyApi extends SimpleEventEmitter {
 					? "delete"
 					: "all" in moduleRoute
 					? "all"
+					: "default" in moduleRoute
+					? "default"
 					: null;
 
 			if (!methodBy || typeof moduleRoute[methodBy] !== "function") {
@@ -444,17 +451,58 @@ class OnlyApi extends SimpleEventEmitter {
 					let response: RouteResponse | undefined;
 
 					for (let i = 0; i < callbacks.length; i++) {
-						let continueToNext: boolean = false;
-
-						const next = () => {
-							continueToNext = true;
-						};
-
-						response = await Promise.race([callbacks[i](req, next)]);
-
-						if (!continueToNext) {
-							break;
+						if (typeof callbacks[i] !== "function") {
+							continue;
 						}
+
+						response = await new Promise<RouteResponse>(async (res, rej) => {
+							let resolved: boolean = false;
+
+							const resolve = (value: RouteResponse) => {
+								if (resolved) {
+									return;
+								}
+								resolved = true;
+								res(value);
+							};
+
+							const reject = (e: Error) => {
+								if (resolved) {
+									return;
+								}
+								resolved = true;
+								rej(e);
+							};
+
+							const next = (toContinue: boolean | Error = true) => {
+								if (typeof toContinue === "boolean") {
+									return toContinue ? resolve(new RouteResponse({ code: 200 })) : reject(new Error("Middleware not allowed!"));
+								}
+
+								if (toContinue instanceof Error) {
+									return reject(toContinue);
+								}
+
+								return resolve(new RouteResponse({ code: 200 }));
+							};
+
+							const result = await Promise.race([callbacks[i](req, next)]).catch((e) => {
+								return new Error(e);
+							});
+
+							if (result instanceof RouteResponse) {
+								return resolve(result);
+							}
+
+							if (result instanceof Error) {
+								return reject(result);
+							}
+						});
+
+						if (!response) {
+							throw new Error("Middleware not allowed!");
+						}
+
 						await new Promise<void>((resolve) => setTimeout(resolve, 0));
 					}
 

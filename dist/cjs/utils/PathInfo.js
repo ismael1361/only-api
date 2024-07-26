@@ -19,7 +19,9 @@ function getPathKeys(path) {
     }
     const keys = ["", ...path.split("/")];
     return keys.map((key) => {
-        return key.startsWith("[") ? parseInt(key.slice(1, -1)) : key;
+        const isList = key.startsWith("[") && key.endsWith("]");
+        key = isList ? key.slice(1, -1).trim() : key;
+        return isList ? (/^[0-9]+$/gi.test(key) ? parseInt(key) : key === "*" || key === "" ? "*" : key) : key;
     });
 }
 class PathInfo {
@@ -105,10 +107,11 @@ class PathInfo {
     static variablesKeys(varPath) {
         let count = 0;
         const variables = [];
-        if (!varPath.includes("*") && !varPath.includes("$")) {
+        const keys = getPathKeys(varPath);
+        if (!keys.includes("*") && keys.findIndex((key) => typeof key === "string" && key[0] === "$") < 0) {
             return variables;
         }
-        getPathKeys(varPath).forEach((key) => {
+        keys.forEach((key) => {
             if (key === "*") {
                 variables.push(count++);
             }
@@ -155,14 +158,14 @@ class PathInfo {
                 return count;
             },
         };
-        if (!varPath.includes("*") && !varPath.includes("$")) {
+        const keys = getPathKeys(varPath);
+        const pathKeys = getPathKeys(fullPath);
+        if (!keys.includes("*") && keys.findIndex((key) => typeof key === "string" && key[0] === "$") < 0) {
             return variables;
         }
         if (!this.get(varPath).equals(this.fillVariables(varPath, fullPath))) {
             return variables;
         }
-        const keys = getPathKeys(varPath);
-        const pathKeys = getPathKeys(fullPath);
         keys.forEach((key, index) => {
             const pathKey = pathKeys[index];
             if (key === "*") {
@@ -187,10 +190,10 @@ class PathInfo {
      * PathInfo.fillVariables('users/$uid/posts/$postid', 'users/ewout/posts/post1/title') === 'users/ewout/posts/post1'
      */
     static fillVariables(varPath, fullPath) {
-        if (varPath.indexOf("*") < 0 && varPath.indexOf("$") < 0) {
+        const keys = getPathKeys(varPath);
+        if (!keys.includes("*") && keys.findIndex((key) => typeof key === "string" && key[0] === "$") < 0) {
             return varPath;
         }
-        const keys = getPathKeys(varPath);
         const pathKeys = getPathKeys(fullPath);
         const merged = keys.map((key, index) => {
             if (key === pathKeys[index] || index >= pathKeys.length) {

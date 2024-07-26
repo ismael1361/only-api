@@ -1,6 +1,6 @@
 import { SimpleEventEmitter, RouteResponse } from "./utils";
 import { FetchOptions, OnlyApiOptions } from "./type";
-import express, { Request, Response } from "express";
+import express, { NextFunction, Request, Response } from "express";
 export * from "./type";
 export * from "./tools";
 declare class OnlyApi extends SimpleEventEmitter {
@@ -19,7 +19,8 @@ declare class OnlyApi extends SimpleEventEmitter {
     private addRoute;
     private changeRoute;
     private removeRoute;
-    fetchRoute<T = any>(route: string, options?: Partial<FetchOptions>, request?: Request, response?: Response): Promise<RouteResponse<T>>;
+    findRouteBy(routePath: string, base?: string): string | undefined;
+    fetchRoute<T = any>(route: string, options?: Partial<FetchOptions>, request?: Request, response?: Response, next?: NextFunction): Promise<RouteResponse<T>>;
 }
 declare function onlyApi(routePath: string, options?: Partial<OnlyApiOptions> | ReturnType<typeof express>): OnlyApi;
 export declare const fetchRoute: <T = any>(route: string, options?: Partial<FetchOptions>) => Promise<RouteResponse<T>>;
