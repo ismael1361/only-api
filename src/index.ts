@@ -1,13 +1,14 @@
 import path from "path";
-import { PathInfo, SimpleCache, SimpleEventEmitter, RouteResponse, parseUrl, resolvePath, joinObject, cors } from "./utils";
+import { PathInfo, SimpleCache, SimpleEventEmitter, RouteResponse, parseUrl, resolvePath, joinObject } from "./utils";
 import chokidar from "chokidar";
-import { FetchOptions, OnlyApiOptions, Headers, Route, RouteFunction, RouteRequest } from "./type";
+import { FetchOptions, OnlyApiOptions, Headers, Route, RouteFunction, RouteRequest, FileInfo } from "./type";
 import { importModule } from "./tsUtils";
 import { logError, logTrace } from "./log";
 import { getCachedResponse, getUrlOrigin } from "./tools";
 import { RouteConfigContext, RoutePathContext, RouteRequestContext } from "./contexts";
 import express, { Request, Response } from "express";
 import { corsSync } from "./utils/Cors";
+import multer from "multer";
 
 export * from "./type";
 export * from "./tools";
@@ -111,6 +112,13 @@ class OnlyApi extends SimpleEventEmitter {
 			resolveReady();
 		});
 
+		const storage = multer.memoryStorage();
+		const upload = multer({ storage });
+
+		this.app.use(upload.array("files", Infinity));
+
+		this.app.use(express.json());
+
 		const route: [string, ...any[]] = Array.prototype.concat.apply(
 			[] as any[],
 			[
@@ -154,6 +162,7 @@ class OnlyApi extends SimpleEventEmitter {
 							headers: req.headers as any,
 							params: req.params as any,
 							query: req.query as any,
+							body: req.body as any,
 						},
 						req,
 						res,
@@ -231,7 +240,12 @@ class OnlyApi extends SimpleEventEmitter {
 	}
 
 	private async addRoute(routePath: string) {
-		const p = routePath.replace(/\\/g, "/").replace(this.mainPath.replace(/\\/g, "/"), "").replace("/index.ts", "").replace("/index.js", "");
+		const p = routePath
+			.replace(/\\/g, "/")
+			.replace(this.mainPath.replace(/\\/g, "/"), "")
+			.replace("/index.ts", "")
+			.replace("/index.js", "")
+			.replace(/(\/{1,})\[/gi, "[");
 
 		const exports: Route<RouteResponse> = await importModule(routePath, true, () => {
 			this.addRoute(routePath);
@@ -273,6 +287,8 @@ class OnlyApi extends SimpleEventEmitter {
 			body: {},
 			params: {},
 			query: {},
+			files: [],
+			file: undefined,
 		},
 		request?: Request,
 		response?: Response,
@@ -323,6 +339,25 @@ class OnlyApi extends SimpleEventEmitter {
 			const res = response ?? prevConfig.res;
 			const req = request ?? prevConfig.req;
 
+			const files: FileInfo[] = (options && Array.isArray(options.files) ? options.files : req && Array.isArray((req as any).files) ? ((req as any).files as any[]) : [])
+				.filter((b) => b instanceof Buffer || (typeof b === "object" && "buffer" in b))
+				.map((b) => {
+					return b instanceof Buffer
+						? {
+								fieldname: "file",
+								originalname: "file",
+								encoding: "7bit",
+								mimetype: "application/octet-stream",
+								size: b.length,
+								stream: undefined,
+								destination: "",
+								filename: "file",
+								path: "",
+								buffer: b,
+						  }
+						: b;
+				});
+
 			const getParams = () => {
 				const { length, ...params } = PathInfo.extractVariables(findRoute, routePath);
 				return Object.entries(params).reduce((acc, [key, value]) => {
@@ -368,6 +403,8 @@ class OnlyApi extends SimpleEventEmitter {
 							...searchParams,
 						},
 						cache,
+						files,
+						file: options.file instanceof Buffer ? options.file : files.length > 0 ? files[0] : undefined,
 					};
 
 					let response: RouteResponse | undefined;
@@ -436,6 +473,8 @@ class OnlyApi extends SimpleEventEmitter {
 						...(options.query ?? {}),
 						...searchParams,
 					},
+					files,
+					file: options.file instanceof Buffer ? options.file : files.length > 0 ? files[0] : undefined,
 				},
 			)();
 

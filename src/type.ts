@@ -1,5 +1,6 @@
 import type { SimpleCache } from "./utils";
 import type { Request } from "express";
+import type { Readable } from "stream";
 
 export interface OnlyApiOptions {
 	host: string;
@@ -101,18 +102,50 @@ export type HeadersProps =
 
 export type Headers = Partial<Record<HeadersProps, string>> & { [key: string]: string };
 
+export interface FileInfo {
+	/** Name of the form field associated with this file. */
+	fieldname: string;
+	/** Name of the file on the uploader's computer. */
+	originalname: string;
+	/**
+	 * Value of the `Content-Transfer-Encoding` header for this file.
+	 * @deprecated since July 2015
+	 * @see RFC 7578, Section 4.7
+	 */
+	encoding: string;
+	/** Value of the `Content-Type` header for this file. */
+	mimetype: string;
+	/** Size of the file in bytes. */
+	size: number;
+	/**
+	 * A readable stream of this file. Only available to the `_handleFile`
+	 * callback for custom `StorageEngine`s.
+	 */
+	stream?: Readable;
+	/** `DiskStorage` only: Directory to which this file has been uploaded. */
+	destination: string;
+	/** `DiskStorage` only: Name of this file within `destination`. */
+	filename: string;
+	/** `DiskStorage` only: Full path to the uploaded file. */
+	path: string;
+	/** `MemoryStorage` only: A Buffer containing the entire file. */
+	buffer: Buffer;
+}
+
 export interface FetchOptions {
 	method: "GET" | "POST" | "PUT" | "DELETE" | "get" | "post" | "put" | "delete";
 	headers: Headers;
-	body: Blob | Buffer | string | URLSearchParams | Record<string, any>;
+	body: Record<string, any>;
 	params: Record<string, string>;
 	query: Record<string, string>;
+	files: FileInfo[];
+	file?: FileInfo;
 }
 
 export type RequiresAccess = (users: Record<string, string>) => Promise<boolean>;
 
 export interface RouteRequest<
-	B = any,
+	B extends Object = Record<string, any>,
 	P extends string = string,
 	Q extends string = string,
 	C extends Record<string, any> = {
@@ -125,10 +158,12 @@ export interface RouteRequest<
 	params: {
 		[key in P]: string;
 	};
-	query: {
+	query: Partial<{
 		[key in Q]: string;
-	};
+	}>;
 	cache: SimpleCache<C>;
+	files: FileInfo[];
+	file?: FileInfo;
 }
 
 export type RouteFunction<R = any> = (req: RouteRequest, next: () => void) => R | Promise<R>;

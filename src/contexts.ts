@@ -9,6 +9,7 @@ export const RouteRequestContext = createContext<FetchOptions>({
 	body: {},
 	params: {},
 	query: {},
+	files: [],
 });
 
 export const RoutePathContext = createContext<{

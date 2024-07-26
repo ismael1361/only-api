@@ -20,7 +20,14 @@ routes/
             index.ts
 ```
 
-Neste exemplo, o diretório `users` contém um arquivo `index.js` que define a rota principal `/users`, enquanto o diretório `$id` contém um arquivo `index.ts` que define a rota `/users/:id`, o diretório `posts` contém um arquivo `index.js` que define a rota principal `/posts`, e o diretório `[*]` contém um arquivo `index.ts` que define a rota `/posts[*]`. Dessa forma, as rotas são organizadas de acordo com a estrutura de pastas, facilitando a navegação e a manutenção do código.
+Neste exemplo, o diretório `users` contém um arquivo `index.js` que define a rota principal `/users`, enquanto o diretório `$id` contém um arquivo `index.ts` que define a rota `/users/:id`, o diretório `posts` contém um arquivo `index.js` que define a rota principal `/posts`, e o diretório `[*]` contém um arquivo `index.ts` que define a rota `/posts[*]`. Dessa forma, as rotas são organizadas de acordo com a estrutura de pastas, facilitando a navegação e a manutenção do código. Ou seja:
+
+```
+routes/users
+routes/users/$id
+routes/posts
+routes/posts[*]
+```
 
 Além disso, o `only-api` elimina a necessidade de pacotes adicionais, como o `nodemon`, que são comumente usados para monitorar mudanças em arquivos e reiniciar o projeto automaticamente. O `only-api` incorpora mecanismos internos que gerenciam essas mudanças de forma eficiente, proporcionando um ambiente de desenvolvimento mais ágil e menos propenso a erros.
 
@@ -216,10 +223,12 @@ interface RouteRequest<
 	params: {
 		[key in P]: string;
 	};
-	query: {
+	query: Partial<{
 		[key in Q]: string;
-	};
+	}>;
 	cache: SimpleCache<C>;
+    files: FileInfo[];
+	file?: FileInfo;
 }
 ```
 
@@ -236,8 +245,9 @@ Exemplo:
 // routes/users/$id/index.ts
 import { RouteRequest, RouteResponse } from 'only-api';
 
-export const get = (req: RouteRequest<{}, "id">) => {
+export const get = (req: RouteRequest<{}, "id", "date"|"q">) => {
     const { id } = req.params;
+    const { date, q } = req.query;
     return RouteResponse.json({ message: `GET /users/${id}` });
 };
 ```
