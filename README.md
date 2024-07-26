@@ -41,6 +41,8 @@ O `only-api` também oferece funcionalidades úteis para uso em rotas, como a ca
   - [Instalação](#instalação)
   - [Uso](#uso)
     - [`RouteResponse`](#routeresponse)
+      - [`Content-Type` - Tipos de Conteúdo](#content-type---tipos-de-conteúdo)
+      - [`ReadableStream` - Fluxo de Leitura](#readablestream---fluxo-de-leitura)
     - [`RouteRequest`](#routerequest)
   - [Funções Especiais](#funções-especiais)
     - [`corsOringin`](#corsoringin)
@@ -166,6 +168,8 @@ export const delete = (req) => {
 
 O único retorno aceitável é um objeto `RouteResponse` ou uma `Promise` que resolve em um objeto `RouteResponse`. Qualquer outro tipo de retorno será tratado como um erro e resultará em uma resposta de erro com o código de status `500` e a mensagem de erro correspondente ou uma resposta da propriedade `send` em `RouteResponse` que seja capaz de resolver o retorno.
 
+#### `Content-Type` - Tipos de Conteúdo
+
 Em algumas propriedades no `RouteResponse`, é possível passar um segundo parâmetro opcional que define o tipo de conteúdo da resposta. Por exemplo, `RouteResponse.text("GET /users", "text/plain")` define o tipo de conteúdo da resposta como `text/plain`. Ele pode ser uma string ou um objeto que define o tipo de conteúdo da resposta. Exemplos:
 
 ```ts
@@ -204,31 +208,56 @@ export const delete = (req) => {
 };
 ```
 
+#### `ReadableStream` - Fluxo de Leitura
+
+O `RouteResponse` possui um método estático `stream` que permite retornar uma resposta de stream com o corpo fornecido. O corpo fornecido pode ser um fluxo de leitura, uma função de leitura ou um buffer. Por exemplo:
+
+```ts
+// routes/users/index.ts
+import { RouteResponse } from 'only-api';
+
+export const get = (req) => {
+    return RouteResponse.stream(fs.createReadStream("file.txt"));
+};
+
+export const post = (req) => {
+    return RouteResponse.stream((start, end) => chunk.slice(start, end));
+};
+
+export const put = (req) => {
+    return RouteResponse.stream(Buffer.from("PUT /users"));
+};
+
+export const delete = (req) => {
+    return RouteResponse.stream(fs.createReadStream("file.txt"), "application/octet-stream");
+};
+```
+
 ### `RouteRequest`
 
 O Request passado para cada função é bastante limitado, isso pensando em segurança e simplicidade. Para acessar os dados do Request, basta acessar o primeiro parâmetro da função. Para acessar os dados do Response, basta retornar um objeto `RouteResponse`, como mostrado anteriormente. A estrutura do Request é a seguinte:
 
 ```ts
 interface RouteRequest<
-	B = any,
-	P extends string = string,
-	Q extends string = string,
-	C extends Record<string, any> = {
-		[key: string]: any;
-	},
+    B extends Object = Record<string, any>,
+    P extends string = string,
+    Q extends string = string,
+    C extends Record<string, any> = {
+        [key: string]: any;
+    },
 > {
-	method: "GET" | "POST" | "PUT" | "DELETE";
-	headers: Headers;
-	body: B;
-	params: {
-		[key in P]: string;
-	};
-	query: Partial<{
-		[key in Q]: string;
-	}>;
-	cache: SimpleCache<C>;
+    method: "GET" | "POST" | "PUT" | "DELETE";
+    headers: Headers;
+    body: B;
+    params: {
+        [key in P]: string;
+    };
+    query: Partial<{
+        [key in Q]: string;
+    }>;
+    cache: SimpleCache<C>;
     files: FileInfo[];
-	file?: FileInfo;
+    file?: FileInfo;
 }
 ```
 

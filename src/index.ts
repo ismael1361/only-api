@@ -6,7 +6,7 @@ import { importModule } from "./tsUtils";
 import { logError, logTrace } from "./log";
 import { getCachedResponse, getUrlOrigin } from "./tools";
 import { RouteConfigContext, RoutePathContext, RouteRequestContext } from "./contexts";
-import express, { Request, Response } from "express";
+import express, { NextFunction, Request, Response } from "express";
 import { corsSync } from "./utils/Cors";
 import multer from "multer";
 import { platform } from "os";
@@ -139,7 +139,7 @@ class OnlyApi extends SimpleEventEmitter {
 			[
 				"/*",
 				this.options.middlewares,
-				async (req: Request, res: Response) => {
+				async (req: Request, res: Response, next: NextFunction) => {
 					try {
 						const allowed: Array<boolean> = [];
 
@@ -170,6 +170,12 @@ class OnlyApi extends SimpleEventEmitter {
 					const route = req.originalUrl;
 					const method: any = req.method;
 
+					const findRoute = this.findRouteBy(route);
+
+					if (!findRoute) {
+						return next();
+					}
+
 					const response = await this.fetchRoute(
 						route,
 						{
@@ -181,6 +187,7 @@ class OnlyApi extends SimpleEventEmitter {
 						},
 						req,
 						res,
+						next,
 					);
 
 					try {
@@ -270,8 +277,6 @@ class OnlyApi extends SimpleEventEmitter {
 			this.addRoute(routePath);
 		});
 
-		console.log(exports);
-
 		if (this._routesCache.has(p)) {
 			this._routesCache.get(p)?.applyOptions(exports.cacheOptions);
 		} else {
@@ -300,6 +305,15 @@ class OnlyApi extends SimpleEventEmitter {
 		logTrace("warn", `Rota "${path}" foi removido!`, routePath);
 	}
 
+	findRouteBy(routePath: string, base: string = ""): string | undefined {
+		const { pathname: pn } = parseUrl(routePath);
+		const pathname = resolvePath(base, pn);
+		const route = pathname.replace(/^\//gi, "").replace(/\/$/gi, "");
+		return this._routesPath.find((path) => {
+			return PathInfo.get(path).equals(route);
+		});
+	}
+
 	async fetchRoute<T = any>(
 		route: string,
 		options: Partial<FetchOptions> = {
@@ -313,6 +327,7 @@ class OnlyApi extends SimpleEventEmitter {
 		},
 		request?: Request,
 		response?: Response,
+		next?: NextFunction,
 	): Promise<RouteResponse<T>> {
 		const initialyTime = Date.now();
 
@@ -326,9 +341,7 @@ class OnlyApi extends SimpleEventEmitter {
 
 			const routePath = pathname.replace(/^\//gi, "").replace(/\/$/gi, "");
 
-			const findRoute = this._routesPath.find((path) => {
-				return PathInfo.get(path).equals(routePath);
-			});
+			const findRoute = this.findRouteBy(route, localPath);
 
 			if (!findRoute) {
 				throw new Error(`"/${routePath}": Route not found!`);
