@@ -9,15 +9,15 @@ O `only-api` aborda essas questões ao fornecer uma solução que simplifica o g
 Para isso, o `only-api` utiliza um sistema de herança baseado em uma estrutura de diretórios específica, onde cada subdiretório representa uma rota de API REST. Essa abordagem permite que as rotas sejam definidas e organizadas de maneira intuitiva e modular, refletindo diretamente a estrutura de pastas do projeto. Por exemplo:
 
 ```
-routes/
-    users/
-        index.js
-        $id/
-            index.ts
-    posts/
-        index.js
-        [id]/
-            index.ts
+routes
+    ├── users
+    │   ├── index.js
+    │   ├── $id
+    │   │   ├── index.ts
+    └── posts
+        ├── index.js
+        └── [id]
+            └── index.ts
 ```
 
 Neste exemplo, o diretório `users` contém um arquivo `index.js` que define a rota principal `/users`, enquanto o diretório `$id` contém um arquivo `index.ts` que define a rota `/users/:id`, o diretório `posts` contém um arquivo `index.js` que define a rota principal `/posts`, e o diretório `[id]` contém um arquivo `index.ts` que define a rota `/posts[id]`. Dessa forma, as rotas são organizadas de acordo com a estrutura de pastas, facilitando a navegação e a manutenção do código. Ou seja:
