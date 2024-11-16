@@ -682,8 +682,8 @@ A função `corsOringin` permite definir o domínio permitido para acessar a rot
 // routes/users/index.ts
 import { RouteResponse, corsOringin } from 'only-api';
 
-export const get = (req) => {
-    corsOringin("http://example.com");
+export const get = async (req) => {
+    await corsOringin("http://example.com");
 
     return RouteResponse.json({ message: "GET /users" });
 };
@@ -709,8 +709,8 @@ A função `requiresAccess` permite definir um middleware de autenticação `www
 // routes/users/index.ts
 import { RouteResponse, requiresAccess } from 'only-api';
 
-export const get = (req) => {
-    requiresAccess({ admin: "12345" });
+export const get = async (req) => {
+    await requiresAccess({ admin: "12345" });
 
     return RouteResponse.json({ message: "GET /users" });
 };

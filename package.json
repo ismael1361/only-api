@@ -1,7 +1,7 @@
 {
 	"type": "module",
 	"name": "only-api",
-	"version": "0.1.65",
+	"version": "0.1.7",
 	"description": "O `only-api` é um pacote projetado para facilitar a criação de rotas de maneira flexível e dinâmica, eliminando a necessidade de configurações excessivas e complexas para desenvolver uma estrutura de API REST.",
 	"private": false,
 	"main": "./dist/cjs/index.js",

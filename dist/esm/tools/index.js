@@ -80,6 +80,7 @@ export const hasCache = (id = "") => {
  * @param origin Origem permitida
  * @param exposeHeaders Cabeçalhos expostos
  * @throws Se a origem não for permitida
+ * @returns Se a origem é permitida
  *
  * @example
  * ```typescript
@@ -87,30 +88,34 @@ export const hasCache = (id = "") => {
  * ```
  */
 export const corsOringin = (origin, exposeHeaders) => {
-    const { req, res } = RouteConfigContext.get();
-    if (!req || !res) {
-        return;
-    }
-    const headers = getCorsHeaders(origin, req.headers.origin, exposeHeaders);
-    for (const name in headers) {
-        res.setHeader(name, headers[name]);
-    }
-    const allowed = corsSync((req, callback) => {
-        const corsOptions = { origin: false };
-        const whitelist = headers["Access-Control-Allow-Origin"].split(/,\s*/);
-        if (whitelist.includes(req.headers.origin ?? "") || whitelist.includes("*")) {
-            corsOptions.origin = true;
+    return new Promise((resolve, reject) => {
+        const { req, res } = RouteConfigContext.get();
+        if (!req || !res) {
+            return reject(new Error("Request or response not found"));
         }
-        callback(null, corsOptions);
-    }, req, res);
-    if (!allowed) {
-        throw new Error("Origin not allowed");
-    }
+        const headers = getCorsHeaders(origin, req.headers.origin, exposeHeaders);
+        for (const name in headers) {
+            res.setHeader(name, headers[name]);
+        }
+        const allowed = corsSync((req, callback) => {
+            const corsOptions = { origin: false };
+            const whitelist = headers["Access-Control-Allow-Origin"].split(/,\s*/);
+            if (whitelist.includes(req.headers.origin ?? "") || whitelist.includes("*")) {
+                corsOptions.origin = true;
+            }
+            callback(null, corsOptions);
+        }, req, res);
+        if (!allowed) {
+            return reject(new Error("Origin not allowed"));
+        }
+        resolve();
+    });
 };
 /**
  * Requer acesso para acessar uma rota
  * @param users Usuários e senhas permitidos
  * @throws Se o usuário não tiver acesso
+ * @returns Se o usuário tem acesso
  *
  * @example
  * ```typescript
@@ -121,26 +126,29 @@ export const corsOringin = (origin, exposeHeaders) => {
  * ```
  */
 export const requiresAccess = (users) => {
-    const { req, res } = RouteConfigContext.get();
-    if (!req || !res) {
-        return;
-    }
-    const sign = req.headers["x-hub-signature"];
-    if (!sign) {
-        const execute = () => {
-            res.setHeader("www-authenticate", `Basic`);
-            res.sendStatus(401).send("Authentication required");
-        };
-        const authorization = req.headers.authorization;
-        if (!authorization) {
-            execute();
-            throw new Error("Authorization header not found");
+    return new Promise((resolve, reject) => {
+        const { req, res } = RouteConfigContext.get();
+        if (!req || !res) {
+            return reject(new Error("Request or response not found"));
         }
-        const [username_send, password_send] = Buffer.from(authorization.replace("Basic ", ""), "base64").toString().split(":");
-        if (!(username_send in users && users[username_send].includes(password_send))) {
-            execute();
-            throw new Error("Invalid username or password");
+        const sign = req.headers["x-hub-signature"];
+        if (!sign) {
+            const execute = () => {
+                res.setHeader("www-authenticate", `Basic`);
+                res.sendStatus(401).send("Authentication required");
+            };
+            const authorization = req.headers.authorization;
+            if (!authorization) {
+                execute();
+                return reject(new Error("Authorization header not found"));
+            }
+            const [username_send, password_send] = Buffer.from(authorization.replace("Basic ", ""), "base64").toString().split(":");
+            if (!(username_send in users && users[username_send].includes(password_send))) {
+                execute();
+                return reject(new Error("Invalid username or password"));
+            }
         }
-    }
+        return resolve();
+    });
 };
 //# sourceMappingURL=index.js.map

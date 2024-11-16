@@ -4,9 +4,9 @@ import { Users } from "controlers";
 console.log(Users);
 
 export const get = async (req: RouteRequest<{}, "id", "date" | "q">) => {
-	corsOringin("*");
+	await corsOringin("*");
 
-	requiresAccess({ root: "admin" });
+	await requiresAccess({ root: "admin" });
 
 	cacheControl(15, "user");
 

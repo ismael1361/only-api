@@ -41,17 +41,19 @@ export declare const hasCache: (id?: string) => boolean;
  * @param origin Origem permitida
  * @param exposeHeaders Cabeçalhos expostos
  * @throws Se a origem não for permitida
+ * @returns Se a origem é permitida
  *
  * @example
  * ```typescript
  * await corsOringin("https://meu.servidor.com", "Content-Type, Authorization, Content-Length, Accept, Origin, X-Requested-With, DataBase-Context");
  * ```
  */
-export declare const corsOringin: (origin: string | string[], exposeHeaders?: string | string[]) => void;
+export declare const corsOringin: (origin: string | string[], exposeHeaders?: string | string[]) => Promise<void>;
 /**
  * Requer acesso para acessar uma rota
  * @param users Usuários e senhas permitidos
  * @throws Se o usuário não tiver acesso
+ * @returns Se o usuário tem acesso
  *
  * @example
  * ```typescript
@@ -61,5 +63,5 @@ export declare const corsOringin: (origin: string | string[], exposeHeaders?: st
  * });
  * ```
  */
-export declare const requiresAccess: (users: Record<string, string | string[]>) => void;
+export declare const requiresAccess: (users: Record<string, string | string[]>) => Promise<void>;
 //# sourceMappingURL=index.d.ts.map
